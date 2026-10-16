@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "level_id": 12,
+  "difficulty": "flow",
+  "moves": 25,
+  "grid": {
+    "width": 8,
+    "height": 8,
+    "active_cells": [
+      "00111100",
+      "00111100",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "00111100",
+      "00111100"
+    ]
+  },
+  "spawners": [
+    {
+      "col": 0,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 1,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 2,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 3,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 4,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 5,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 6,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 7,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    }
+  ],
+  "obstacles": [
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 1,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 2,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 3,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 4,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 5,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 6,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 2,
+      "y": 4
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 3,
+      "y": 4
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 4,
+      "y": 4
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 5,
+      "y": 4
+    }
+  ],
+  "goals": [
+    {
+      "type": "clear_obstacle",
+      "target": "bramble",
+      "count": 10
+    },
+    {
+      "type": "collect_color",
+      "target": "sapphire",
+      "count": 16
+    }
+  ]
+}

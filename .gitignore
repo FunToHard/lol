@@ -14,5 +14,6 @@ __pycache__/
 *.aab
 *.tmp
 .defold/
-/assets/
-assets/
+assets/*
+!assets/levels/
+!assets/levels/**

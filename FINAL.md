@@ -41,10 +41,10 @@
 ---
 
 ## Phase 3: Level Authoring & Automated Solver
-- [ ] Define JSON level schema (`width`, `height`, `cells`, `spawners`, `obstacles`, `moves`, `goals`).
-- [ ] Build in-engine developer level editor overlay (paint tiles, test play, export JSON).
-- [ ] Build headless Monte Carlo AI Level Solver (simulates 1,000 runs per level with varied player heuristics).
-- [ ] Author, balance, and validate Batch 1 levels (Levels 1–25) with target win rates:
+- [x] Define JSON level schema (`width`, `height`, `cells`, `spawners`, `obstacles`, `moves`, `goals`).
+- [x] Build in-engine developer level editor overlay (paint tiles, test play, export JSON).
+- [x] Build headless Monte Carlo AI Level Solver (simulates 1,000 runs per level with varied player heuristics).
+- [x] Author, balance, and validate Batch 1 levels (Levels 1–25) with target win rates:
   - Levels 1–5 (Intro): >95% win rate
   - Levels 6–15 (Flow): 75%–85% win rate
   - Levels 16–25 (Engaging/Hard): 45%–65% win rate

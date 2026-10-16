@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "level_id": 10,
+  "difficulty": "flow",
+  "moves": 25,
+  "grid": {
+    "width": 8,
+    "height": 8,
+    "active_cells": [
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111"
+    ]
+  },
+  "spawners": [
+    {
+      "col": 0,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 1,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 2,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 3,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 4,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 5,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 6,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    },
+    {
+      "col": 7,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby",
+        "amethyst"
+      ]
+    }
+  ],
+  "obstacles": [
+    {
+      "type": "ingredient",
+      "layer": 1,
+      "x": 1,
+      "y": 0
+    },
+    {
+      "type": "ingredient",
+      "layer": 1,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 1,
+      "y": 3
+    },
+    {
+      "type": "bramble",
+      "layer": 1,
+      "x": 6,
+      "y": 3
+    }
+  ],
+  "goals": [
+    {
+      "type": "drop_ingredient",
+      "target": "acorn",
+      "count": 2
+    },
+    {
+      "type": "collect_color",
+      "target": "ruby",
+      "count": 20
+    }
+  ]
+}

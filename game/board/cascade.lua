@@ -116,10 +116,11 @@ function cascade.refill_spawners(g, rng, allowed_colors)
     local spawns = {}
 
     for x = 1, g.width do
+        local col_colors = (g.spawners and g.spawners[x]) or allowed_colors
         for y = g.height, 1, -1 do
             local c = grid.get(g, x, y)
             if cell.can_fall_into(c) then
-                local chosen_color = prng.choice(rng, allowed_colors)
+                local chosen_color = prng.choice(rng, col_colors)
                 c.tile_type = chosen_color
                 c.state = cell.STATE_IDLE
                 table.insert(spawns, {

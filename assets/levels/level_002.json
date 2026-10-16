@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "level_id": 2,
+  "difficulty": "intro",
+  "moves": 28,
+  "grid": {
+    "width": 8,
+    "height": 8,
+    "active_cells": [
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111",
+      "11111111"
+    ]
+  },
+  "spawners": [
+    {
+      "col": 0,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 1,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 2,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 3,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 4,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 5,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 6,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    },
+    {
+      "col": 7,
+      "colors": [
+        "amber",
+        "emerald",
+        "sapphire",
+        "ruby"
+      ]
+    }
+  ],
+  "obstacles": [],
+  "goals": [
+    {
+      "type": "collect_color",
+      "target": "emerald",
+      "count": 12
+    },
+    {
+      "type": "collect_color",
+      "target": "sapphire",
+      "count": 12
+    }
+  ]
+}

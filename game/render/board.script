@@ -29,7 +29,7 @@ end
 -- @param tile_id hash Defold game object ID of the tile.
 -- @param cell_data table Board cell table containing tile, powerup, and obstacle states.
 local function update_tile_sprite(tile_id, cell_data)
-    local sprite_name = board_view.get_sprite_name(cell_data.tile, cell_data.powerup, cell_data.obstacle)
+    local sprite_name = board_view.get_sprite_name(cell_data.tile_type, cell_data.powerup_type, cell_data.obstacle)
     if sprite_name and tile_id then
         sprite.play_flipbook(msg.url(nil, tile_id, "sprite"), sprite_name)
     end
@@ -79,7 +79,7 @@ function init(self)
 
             -- Piece game object
             local cell_data = grid.get(self.board, gx, gy)
-            if cell_data and (cell_data.tile or cell_data.powerup) then
+            if cell_data and (cell_data.tile_type or cell_data.powerup_type) then
                 local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
                 self.tile_objects[k] = tile_id
                 update_tile_sprite(tile_id, cell_data)
@@ -130,10 +130,11 @@ local function resolve_cascade_wave(self, wave)
     haptic.impact(self.haptic)
 
     -- Animate match burst and clear visual tile objects
-    local powerup_spawns = match_finder.determine_created_powerups(matches)
     local spawn_map = {}
-    for _, sp in ipairs(powerup_spawns) do
-        spawn_map[cell_key(sp.x, sp.y)] = sp.powerup
+    for _, m in ipairs(matches) do
+        if m.created_powerup and m.spawn_pos then
+            spawn_map[cell_key(m.spawn_pos.x, m.spawn_pos.y)] = m.created_powerup
+        end
     end
 
     for _, m in ipairs(matches) do
@@ -151,19 +152,21 @@ local function resolve_cascade_wave(self, wave)
     end
 
     -- Apply matches in pure simulation
-    cascade.apply_matches(self.board, matches, powerup_spawns)
+    local clear_res = cascade.apply_matches(self.board, matches)
 
     -- Create visual tiles for newly synthesized powerups
-    for _, sp in ipairs(powerup_spawns) do
-        local k = cell_key(sp.x, sp.y)
-        local tile_id = self.tile_objects[k]
-        local c = grid.get(self.board, sp.x, sp.y)
-        if not tile_id then
-            local px, py = board_view.grid_to_screen(sp.x, sp.y, self.width, self.height)
-            tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
-            self.tile_objects[k] = tile_id
+    if clear_res and clear_res.powerups then
+        for _, sp in ipairs(clear_res.powerups) do
+            local k = cell_key(sp.pos.x, sp.pos.y)
+            local tile_id = self.tile_objects[k]
+            local c = grid.get(self.board, sp.pos.x, sp.pos.y)
+            if not tile_id then
+                local px, py = board_view.grid_to_screen(sp.pos.x, sp.pos.y, self.width, self.height)
+                tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                self.tile_objects[k] = tile_id
+            end
+            if c then update_tile_sprite(tile_id, c) end
         end
-        if c then update_tile_sprite(tile_id, c) end
     end
 
     -- Apply gravity drops in simulation
@@ -259,7 +262,7 @@ local function execute_swap(self, fx, fy, tx, ty)
         if is_powerup then
             local c_from = grid.get(self.board, tx, ty)
             local c_to = grid.get(self.board, fx, fy)
-            if c_from and c_from.powerup and c_to and c_to.powerup then
+            if c_from and c_from.powerup_type and c_to and c_to.powerup_type then
                 -- Combo blast
                 camera_shake.trigger(self.shake, 4.0)
                 haptic.heavy(self.haptic)
@@ -287,14 +290,14 @@ function on_input(self, action_id, action)
         local res = input_controller.on_touch_up(self.input, action.x, action.y)
         if res and res.tapped then
             local c = grid.get(self.board, res.from_x, res.from_y)
-            if c and c.powerup then
+            if c and c.powerup_type then
                 -- Single tap power-up detonation
                 self.is_resolving = true
                 camera_shake.trigger(self.shake, 2.5)
                 haptic.heavy(self.haptic)
                 local blast = powerups.detonate_single(self.board, res.from_x, res.from_y)
                 local matches = { { cells = blast.cleared_cells } }
-                cascade.apply_matches(self.board, matches, {})
+                cascade.apply_matches(self.board, matches)
                 resolve_cascade_wave(self, 1)
             end
         end
