@@ -30,13 +30,13 @@
 ---
 
 ## Phase 2: Visual Board Presentation & Tactile "Juice"
-- [ ] Connect `game.atlas` sprites to board grid game objects.
+- [x] Connect `game.atlas` sprites to board grid game objects.
 - [x] Implement responsive touch drag-and-swap input controller.
-- [ ] Implement smooth piece falling and swap animations with 80ms squash & stretch on impact.
-- [ ] Add visual particle effects (golden sparks, trail particles for Rockets and Fireflies).
+- [x] Implement smooth piece falling and swap animations with 80ms squash & stretch on impact.
+- [x] Add visual particle effects (golden sparks, trail particles for Rockets and Fireflies).
 - [x] Add subtle camera impulse shake (2–3px on Bombs and Mega Combos).
 - [x] Implement audio manager with dynamic pentatonic cascade pitching (C4 → D4 → E4 → G4 → A4 → C5).
-- [ ] Add Android haptic tick feedback on swaps and explosions.
+- [x] Add Android haptic tick feedback on swaps and explosions.
 
 ---
 

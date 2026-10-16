@@ -17,7 +17,9 @@ local test_suites = {
     "tests/test_reshuffle.lua",
     "tests/test_board_view.lua",
     "tests/test_input_controller.lua",
-    "tests/test_render.lua"
+    "tests/test_render.lua",
+    "tests/test_haptic.lua",
+    "tests/test_effects.lua"
 }
 
 local start_time = os.clock()

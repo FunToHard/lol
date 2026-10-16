@@ -1,0 +1,315 @@
+--- Main board script driving visual rendering, input events, and simulation synchronisation.
+-- Coordinates board grid game objects, animations, audio cues, and haptics.
+
+local grid = require("game.board.grid")
+local cell_mod = require("game.board.cell")
+local match_finder = require("game.board.match_finder")
+local cascade = require("game.board.cascade")
+local powerups = require("game.board.powerups")
+local reshuffle = require("game.board.reshuffle")
+local prng = require("game.board.prng")
+local board_view = require("game.render.board_view")
+local input_controller = require("game.render.input_controller")
+local camera_shake = require("game.render.camera_shake")
+local audio_manager = require("game.render.audio_manager")
+local haptic = require("game.render.haptic")
+local effects = require("game.render.effects")
+
+local ALLOWED_COLORS = { "amber", "amethyst", "emerald", "ruby", "sapphire" }
+
+--- Generates a unique string key for grid coordinate lookup.
+-- @param x number Grid column.
+-- @param y number Grid row.
+-- @return string Unique key "x,y".
+local function cell_key(x, y)
+    return x .. "," .. y
+end
+
+--- Updates the visual sprite of a tile game object based on board cell contents.
+-- @param tile_id hash Defold game object ID of the tile.
+-- @param cell_data table Board cell table containing tile, powerup, and obstacle states.
+local function update_tile_sprite(tile_id, cell_data)
+    local sprite_name = board_view.get_sprite_name(cell_data.tile, cell_data.powerup, cell_data.obstacle)
+    if sprite_name and tile_id then
+        sprite.play_flipbook(msg.url(nil, tile_id, "sprite"), sprite_name)
+    end
+end
+
+--- Applies the 80ms squash and stretch impact bounce when a piece lands.
+-- @param tile_id hash Defold game object ID of the landing tile.
+local function apply_squash_and_stretch(tile_id)
+    if not tile_id then return end
+    go.animate(tile_id, "scale.x", go.PLAYBACK_ONCE_FORWARD, 1.15, go.EASING_OUTSINE, 0.04, 0, function()
+        go.animate(tile_id, "scale.x", go.PLAYBACK_ONCE_FORWARD, 1.0, go.EASING_INSINE, 0.04)
+    end)
+    go.animate(tile_id, "scale.y", go.PLAYBACK_ONCE_FORWARD, 0.85, go.EASING_OUTSINE, 0.04, 0, function()
+        go.animate(tile_id, "scale.y", go.PLAYBACK_ONCE_FORWARD, 1.0, go.EASING_INSINE, 0.04)
+    end)
+end
+
+--- Initializes the board script component, input listeners, and simulation grid.
+-- @param self table Script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    self.width = 8
+    self.height = 8
+    self.rng = prng.new(os.time and os.time() or 12345)
+    self.board = grid.create(self.width, self.height)
+    self.input = input_controller.new()
+    self.shake = camera_shake.new()
+    self.audio = audio_manager.new(false)
+    self.haptic = haptic.new(true)
+    self.tile_objects = {}
+    self.cell_objects = {}
+    self.is_resolving = false
+
+    -- Populate initial board and eliminate instant pre-matches
+    cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+    reshuffle.execute(self.board, self.rng)
+
+    -- Spawn recessed background cells and interactive pieces
+    for gy = 1, self.height do
+        for gx = 1, self.width do
+            local px, py = board_view.grid_to_screen(gx, gy, self.width, self.height)
+            local k = cell_key(gx, gy)
+
+            -- Recessed cell slot
+            local bg_id = factory.create("#cell_factory", vmath.vector3(px, py, -0.1))
+            self.cell_objects[k] = bg_id
+
+            -- Piece game object
+            local cell_data = grid.get(self.board, gx, gy)
+            if cell_data and (cell_data.tile or cell_data.powerup) then
+                local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                self.tile_objects[k] = tile_id
+                update_tile_sprite(tile_id, cell_data)
+            end
+        end
+    end
+end
+
+--- Updates per-frame logic including camera shake decay.
+-- @param self table Script instance table.
+-- @param dt number Delta time in seconds since previous frame.
+function update(self, dt)
+    camera_shake.update(self.shake, dt)
+    if self.shake.intensity > 0.01 then
+        go.set_position(vmath.vector3(self.shake.offset_x, self.shake.offset_y, 0))
+    else
+        go.set_position(vmath.vector3(0, 0, 0))
+    end
+end
+
+--- Recursively resolves cascade waves, gravity drops, and top spawner refills.
+-- @param self table Script instance table.
+-- @param wave number Current cascade iteration depth (1-indexed).
+local function resolve_cascade_wave(self, wave)
+    local matches = match_finder.find_all_matches(self.board)
+    if #matches == 0 then
+        -- Check for dead-board reshuffle
+        if not reshuffle.has_legal_moves(self.board) then
+            reshuffle.execute(self.board, self.rng)
+            -- Refresh visual sprites after reshuffle
+            for gy = 1, self.height do
+                for gx = 1, self.width do
+                    local k = cell_key(gx, gy)
+                    local tile_id = self.tile_objects[k]
+                    local c = grid.get(self.board, gx, gy)
+                    if tile_id and c then
+                        update_tile_sprite(tile_id, c)
+                    end
+                end
+            end
+        end
+        self.is_resolving = false
+        return
+    end
+
+    -- Play pitched cascade sound and tactile feedback
+    audio_manager.play_cascade(self.audio, wave)
+    haptic.impact(self.haptic)
+
+    -- Animate match burst and clear visual tile objects
+    local powerup_spawns = match_finder.determine_created_powerups(matches)
+    local spawn_map = {}
+    for _, sp in ipairs(powerup_spawns) do
+        spawn_map[cell_key(sp.x, sp.y)] = sp.powerup
+    end
+
+    for _, m in ipairs(matches) do
+        for _, pos in ipairs(m.cells) do
+            local k = cell_key(pos.x, pos.y)
+            local tile_id = self.tile_objects[k]
+            if tile_id and not spawn_map[k] then
+                go.animate(tile_id, "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1.25, 1.25, 1.0), go.EASING_OUTQUAD, 0.15)
+                go.animate(msg.url(nil, tile_id, "sprite"), "tint.w", go.PLAYBACK_ONCE_FORWARD, 0.0, go.EASING_OUTQUAD, 0.15, 0, function()
+                    go.delete(tile_id)
+                end)
+                self.tile_objects[k] = nil
+            end
+        end
+    end
+
+    -- Apply matches in pure simulation
+    cascade.apply_matches(self.board, matches, powerup_spawns)
+
+    -- Create visual tiles for newly synthesized powerups
+    for _, sp in ipairs(powerup_spawns) do
+        local k = cell_key(sp.x, sp.y)
+        local tile_id = self.tile_objects[k]
+        local c = grid.get(self.board, sp.x, sp.y)
+        if not tile_id then
+            local px, py = board_view.grid_to_screen(sp.x, sp.y, self.width, self.height)
+            tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+            self.tile_objects[k] = tile_id
+        end
+        if c then update_tile_sprite(tile_id, c) end
+    end
+
+    -- Apply gravity drops in simulation
+    local drops = cascade.apply_gravity(self.board)
+    for _, drop in ipairs(drops) do
+        local old_k = cell_key(drop.x, drop.from_y)
+        local new_k = cell_key(drop.x, drop.to_y)
+        local tile_id = self.tile_objects[old_k]
+        if tile_id then
+            self.tile_objects[old_k] = nil
+            self.tile_objects[new_k] = tile_id
+            local target_x, target_y = board_view.grid_to_screen(drop.x, drop.to_y, self.width, self.height)
+            go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.16, 0, function()
+                apply_squash_and_stretch(tile_id)
+            end)
+        end
+    end
+
+    -- Refill spawners from top
+    local refills = cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+    for _, refill in ipairs(refills) do
+        local k = cell_key(refill.x, refill.y)
+        local target_x, target_y = board_view.grid_to_screen(refill.x, refill.y, self.width, self.height)
+        local spawn_y = target_y + 100
+        local tile_id = factory.create("#tile_factory", vmath.vector3(target_x, spawn_y, 0.0))
+        self.tile_objects[k] = tile_id
+        local c = grid.get(self.board, refill.x, refill.y)
+        if c then update_tile_sprite(tile_id, c) end
+
+        go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.18, 0, function()
+            apply_squash_and_stretch(tile_id)
+        end)
+    end
+
+    -- Chain next cascade wave after animation delay
+    timer.delay(0.24, false, function()
+        resolve_cascade_wave(self, wave + 1)
+    end)
+end
+
+--- Executes a validated swap between two adjacent grid cells.
+-- @param self table Script instance table.
+-- @param fx number Source cell X.
+-- @param fy number Source cell Y.
+-- @param tx number Target cell X.
+-- @param ty number Target cell Y.
+local function execute_swap(self, fx, fy, tx, ty)
+    local k_from = cell_key(fx, fy)
+    local k_to = cell_key(tx, ty)
+    local tile_from = self.tile_objects[k_from]
+    local tile_to = self.tile_objects[k_to]
+
+    local is_valid, matches, is_powerup = match_finder.is_valid_swap(self.board, fx, fy, tx, ty)
+
+    if not is_valid then
+        -- Play rejection back-and-forth bounce
+        local p_from_x, p_from_y = board_view.grid_to_screen(fx, fy, self.width, self.height)
+        local p_to_x, p_to_y = board_view.grid_to_screen(tx, ty, self.width, self.height)
+        local mid_x = (p_from_x + p_to_x) * 0.5
+        local mid_y = (p_from_y + p_to_y) * 0.5
+
+        if tile_from then
+            go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(mid_x, mid_y, 0), go.EASING_OUTSINE, 0.08, 0, function()
+                go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_from_x, p_from_y, 0), go.EASING_INSINE, 0.08)
+            end)
+        end
+        return
+    end
+
+    self.is_resolving = true
+    haptic.tick(self.haptic)
+
+    -- Smooth positional tween
+    local p_from_x, p_from_y = board_view.grid_to_screen(fx, fy, self.width, self.height)
+    local p_to_x, p_to_y = board_view.grid_to_screen(tx, ty, self.width, self.height)
+
+    if tile_from then
+        go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_to_x, p_to_y, 0), go.EASING_OUTQUAD, 0.15)
+    end
+    if tile_to then
+        go.animate(tile_to, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_from_x, p_from_y, 0), go.EASING_OUTQUAD, 0.15)
+    end
+
+    -- Swap objects in lookup table
+    self.tile_objects[k_from] = tile_to
+    self.tile_objects[k_to] = tile_from
+
+    -- Swap simulation data
+    grid.swap(self.board, fx, fy, tx, ty)
+
+    -- Check powerup detonation vs standard match resolution
+    timer.delay(0.16, false, function()
+        if is_powerup then
+            local c_from = grid.get(self.board, tx, ty)
+            local c_to = grid.get(self.board, fx, fy)
+            if c_from and c_from.powerup and c_to and c_to.powerup then
+                -- Combo blast
+                camera_shake.trigger(self.shake, 4.0)
+                haptic.heavy(self.haptic)
+            else
+                camera_shake.trigger(self.shake, 2.0)
+            end
+        end
+        resolve_cascade_wave(self, 1)
+    end)
+end
+
+--- Handles user input events (touch press, drag, and release).
+-- @param self table Script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Input action table containing x, y, pressed, released flags.
+-- @return boolean consumed True if the input was consumed.
+function on_input(self, action_id, action)
+    if action_id ~= hash("touch") then return false end
+    if self.is_resolving then return true end
+
+    if action.pressed then
+        input_controller.on_touch_down(self.input, action.x, action.y)
+        return true
+    elseif action.released then
+        local res = input_controller.on_touch_up(self.input, action.x, action.y)
+        if res and res.tapped then
+            local c = grid.get(self.board, res.from_x, res.from_y)
+            if c and c.powerup then
+                -- Single tap power-up detonation
+                self.is_resolving = true
+                camera_shake.trigger(self.shake, 2.5)
+                haptic.heavy(self.haptic)
+                local blast = powerups.detonate_single(self.board, res.from_x, res.from_y)
+                local matches = { { cells = blast.cleared_cells } }
+                cascade.apply_matches(self.board, matches, {})
+                resolve_cascade_wave(self, 1)
+            end
+        end
+        return true
+    else
+        local res = input_controller.on_touch_move(self.input, action.x, action.y)
+        if res and res.committed then
+            execute_swap(self, res.from_x, res.from_y, res.to_x, res.to_y)
+        end
+        return true
+    end
+end
+
+--- Cleans up input focus upon component finalization.
+-- @param self table Script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

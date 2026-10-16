@@ -19,7 +19,9 @@ scale = 0.01
 [html5]
 scale_mode = stretch
 
+[input]
+game_binding = /input/game.input_bindingc
+
 [project]
 title = Lantern Grove
 custom_resources = assets/levels
-
