@@ -104,4 +104,28 @@ assert_eq(ledger.get_balance(econ, "coins"), 150, "Coins deducted by 900 (1050 -
 local afford_now = defeat_flow:can_afford_coin_continuation()
 assert_false(afford_now, "Cannot afford another 900 coin continuation")
 
+-- Test 6: Watching Ad for +3 Extra Moves
+local ad_tracker = {
+    level_id = 3,
+    moves_remaining = 0,
+    total_moves = 20,
+    status = "LOST"
+}
+local ad_flow = level_flow.new(econ, ads, save_data, 3)
+local ad_ctrl = level_end_controller.new(3, ad_tracker, ad_flow)
+level_end_controller.show_defeat(ad_ctrl)
+assert_true(ad_ctrl.is_visible, "Ad defeat modal visible")
+
+local ad_callback_fired = false
+level_end_controller.watch_ad_continuation(ad_ctrl, function(ok, err)
+    ad_callback_fired = true
+    assert_true(ok, "Rewarded ad continuation succeeded: " .. tostring(err))
+end)
+
+assert_true(ad_callback_fired, "Ad callback fired")
+assert_eq(ad_tracker.moves_remaining, 3, "Tracker granted +3 moves via rewarded ad")
+assert_eq(ad_tracker.status, "IN_PROGRESS", "Tracker status restored to IN_PROGRESS")
+assert_false(ad_ctrl.is_visible, "Modal closed after ad continuation")
+assert_false(ad_flow:can_use_ad_continuation(), "Rewarded ad continuation is exhausted for this level attempt")
+
 print(string.format("All tests passed! (%d/%d assertions)", passed_tests, total_tests))

@@ -146,4 +146,6 @@ function level_flow.watch_ad_for_extra_moves(self, tracker, on_complete)
     end)
 end
 
+level_flow.use_rewarded_ad_continuation = level_flow.watch_ad_for_extra_moves
+
 return level_flow

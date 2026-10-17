@@ -113,12 +113,18 @@ function level_end_controller.watch_ad_continuation(state, on_complete)
         return
     end
 
-    state.flow:use_rewarded_ad_continuation(state.tracker, function(ok, err)
+    local ad_fn = state.flow.watch_ad_for_extra_moves or state.flow.use_rewarded_ad_continuation
+    if not ad_fn then
+        if on_complete then on_complete(false, "UNSUPPORTED_FLOW_METHOD") end
+        return
+    end
+
+    ad_fn(state.flow, state.tracker, function(ok, moves_added, err)
         if ok then
             state.mode = "NONE"
             state.is_visible = false
             state.continuation_succeeded = true
-            table.insert(state.event_log, { event = "continued_with_ad" })
+            table.insert(state.event_log, { event = "continued_with_ad", moves = moves_added })
         end
         if on_complete then on_complete(ok, err) end
     end)
