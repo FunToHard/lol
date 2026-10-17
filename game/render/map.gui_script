@@ -14,6 +14,19 @@ local function refresh_map_data(self)
 
     gui.set_text(self.star_text, tostring(self.stars))
     gui.set_text(self.coin_text, hud_controller.format_number(self.coins))
+
+    -- Update level button visual states (unlocked vs locked)
+    for i = 1, #self.lvl_btns do
+        local btn = self.lvl_btns[i]
+        local txt = self.lvl_txts[i]
+        if i <= self.max_unlocked then
+            gui.set_color(btn, vmath.vector4(1.0, 1.0, 1.0, 1.0))
+            gui.set_color(txt, vmath.vector4(1.0, 1.0, 1.0, 1.0))
+        else
+            gui.set_color(btn, vmath.vector4(0.4, 0.45, 0.5, 0.6))
+            gui.set_color(txt, vmath.vector4(0.6, 0.65, 0.7, 0.6))
+        end
+    end
 end
 
 --- Initializes the Level Select Map GUI components and input focus.
@@ -25,6 +38,24 @@ function init(self)
     self.coin_text = gui.get_node("coin_text")
     self.btn_village = gui.get_node("btn_village")
     self.btn_play_next = gui.get_node("btn_play_next")
+
+    self.lvl_btns = {
+        gui.get_node("lvl_btn_1"),
+        gui.get_node("lvl_btn_2"),
+        gui.get_node("lvl_btn_3"),
+        gui.get_node("lvl_btn_4"),
+        gui.get_node("lvl_btn_5"),
+        gui.get_node("lvl_btn_6")
+    }
+
+    self.lvl_txts = {
+        gui.get_node("lvl_txt_1"),
+        gui.get_node("lvl_txt_2"),
+        gui.get_node("lvl_txt_3"),
+        gui.get_node("lvl_txt_4"),
+        gui.get_node("lvl_txt_5"),
+        gui.get_node("lvl_txt_6")
+    }
 
     refresh_map_data(self)
 end
@@ -54,6 +85,15 @@ function on_input(self, action_id, action)
             local lvl = self.max_unlocked or 1
             pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "puzzle", level_id = lvl })
             return true
+        end
+
+        for i = 1, #self.lvl_btns do
+            if gui.pick_node(self.lvl_btns[i], action.x, action.y) then
+                if i <= self.max_unlocked then
+                    pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "puzzle", level_id = i })
+                end
+                return true
+            end
         end
     end
     return false

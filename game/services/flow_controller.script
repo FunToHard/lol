@@ -6,6 +6,7 @@ local scene_switcher = require("game.services.scene_switcher")
 --- Initializes the flow controller and automatically mounts the initial scene.
 -- @param self table Script instance table.
 function init(self)
+    msg.post(".", "acquire_input_focus")
     self.switcher = scene_switcher.new(scene_switcher.SCENES.MAP)
     self.proxies = {
         map = "#proxy_map",
@@ -33,6 +34,7 @@ function on_message(self, message_id, message, sender)
     elseif message_id == hash("fade_out_done") then
         scene_switcher.on_fade_out_complete(self.switcher)
         if self.active_proxy then
+            msg.post(self.active_proxy, "release_input_focus")
             msg.post(self.active_proxy, "disable")
             msg.post(self.active_proxy, "final")
             msg.post(self.active_proxy, "unload")
@@ -47,7 +49,13 @@ function on_message(self, message_id, message, sender)
     elseif message_id == hash("proxy_loaded") then
         msg.post(sender, "init")
         msg.post(sender, "enable")
+        msg.post(sender, "acquire_input_focus")
         scene_switcher.on_scene_loaded(self.switcher)
+
+        -- Forward optional level parameters to puzzle board
+        if self.switcher.target_scene == "puzzle" and self.switcher.params and self.switcher.params.level_id then
+            pcall(msg.post, "board:/board#board", "load_level", { level_id = self.switcher.params.level_id })
+        end
 
         -- If bootstrapping, fade in or complete instantly
         if self.is_bootstrapping then
@@ -64,4 +72,10 @@ function on_message(self, message_id, message, sender)
             msg.post("#transition", "fade_out", { duration = self.switcher.fade_duration })
         end
     end
+end
+
+--- Cleans up input focus when controller is finalized.
+-- @param self table Script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
 end

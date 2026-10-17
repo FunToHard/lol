@@ -6,6 +6,7 @@
 function init(self)
     self.curtain = gui.get_node("curtain")
     self.is_transitioning = false
+    gui.set_enabled(self.curtain, false)
     gui.set_color(self.curtain, vmath.vector4(0.05, 0.07, 0.08, 0.0))
 end
 
@@ -17,7 +18,7 @@ end
 function on_message(self, message_id, message, sender)
     if message_id == hash("fade_out") then
         self.is_transitioning = true
-        msg.post(".", "acquire_input_focus")
+        gui.set_enabled(self.curtain, true)
         local duration = message.duration or 0.25
         gui.animate(self.curtain, gui.PROP_COLOR, vmath.vector4(0.05, 0.07, 0.08, 1.0), gui.EASING_INOUTQUAD, duration, 0, function()
             msg.post(sender, "fade_out_done")
@@ -26,7 +27,7 @@ function on_message(self, message_id, message, sender)
         local duration = message.duration or 0.25
         gui.animate(self.curtain, gui.PROP_COLOR, vmath.vector4(0.05, 0.07, 0.08, 0.0), gui.EASING_INOUTQUAD, duration, 0, function()
             self.is_transitioning = false
-            msg.post(".", "release_input_focus")
+            gui.set_enabled(self.curtain, false)
             msg.post(sender, "fade_in_done")
         end)
     end
