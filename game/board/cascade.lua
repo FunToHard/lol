@@ -77,7 +77,8 @@ function cascade.apply_gravity(g)
                         if candidate.obstacle and candidate.obstacle.is_solid then
                             break
                         end
-                        if candidate.tile_type ~= nil or candidate.powerup_type ~= nil then
+                        local can_fall = (candidate.tile_type ~= nil or candidate.powerup_type ~= nil or (candidate.obstacle and candidate.obstacle.type == "ingredient"))
+                        if can_fall then
                             source_y = search_y
                             break
                         end
@@ -88,15 +89,20 @@ function cascade.apply_gravity(g)
                     local source_cell = grid.get(g, x, source_y)
                     target_cell.tile_type = source_cell.tile_type
                     target_cell.powerup_type = source_cell.powerup_type
+                    target_cell.obstacle = source_cell.obstacle
                     target_cell.state = cell.STATE_IDLE
 
-                    cell.clear_content(source_cell)
+                    source_cell.tile_type = nil
+                    source_cell.powerup_type = nil
+                    source_cell.obstacle = nil
+                    source_cell.state = cell.STATE_IDLE
 
                     table.insert(falls, {
                         from = {x = x, y = source_y},
                         to = {x = x, y = y},
                         tile_type = target_cell.tile_type,
-                        powerup_type = target_cell.powerup_type
+                        powerup_type = target_cell.powerup_type,
+                        obstacle = target_cell.obstacle
                     })
                 end
             end

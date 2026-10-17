@@ -114,7 +114,7 @@ function level_loader.setup_board(level_def, rng)
         for _, sp in ipairs(level_def.spawners) do
             local col = sp.col
             -- Normalize 0-indexed or 1-indexed column
-            if col == 0 or (col <= w and not sp.is_one_indexed) then
+            if not sp.is_one_indexed then
                 col = col + 1
             end
             board.spawners[col] = sp.colors or DEFAULT_COLORS

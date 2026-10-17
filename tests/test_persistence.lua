@@ -20,8 +20,30 @@ end
 
 print("--- Running Persistence, Recovery & Migration Tests ---")
 
+local is_windows = package.config:sub(1, 1) == "\\"
+
+--- Creates a directory portably across Windows cmd and POSIX shells.
+-- @param dir string Directory path.
+local function make_dir(dir)
+    if is_windows then
+        os.execute("mkdir " .. dir:gsub("/", "\\") .. " 2>nul")
+    else
+        os.execute("mkdir -p " .. dir .. " 2>/dev/null")
+    end
+end
+
+--- Removes a directory portably across Windows cmd and POSIX shells.
+-- @param dir string Directory path.
+local function remove_dir(dir)
+    if is_windows then
+        os.execute("rmdir /s /q " .. dir:gsub("/", "\\") .. " 2>nul")
+    else
+        os.execute("rm -rf " .. dir .. " 2>/dev/null")
+    end
+end
+
 local test_dir = "tests/fixtures_save"
-os.execute("mkdir " .. test_dir:gsub("/", "\\"))
+make_dir(test_dir)
 
 -- Clean up any residual test files
 local p_save, p_tmp, p_bak = save_manager.get_save_paths(test_dir)
@@ -88,9 +110,16 @@ assert_eq(migrated.player.inventory.hammer, 0, "Booster inventory initialized in
 assert_eq(migrated.player.inventory.rocket, 0, "Rocket inventory initialized in v2")
 assert_eq(type(migrated.ledger_history), "table", "Ledger history initialized in v2")
 
+-- Test 5b: Guard against downgrading newer schema versions (e.g. v3 client save)
+local v3_save = { schema_version = 3, custom_future_field = "test" }
+local unmigrated, v3_was_migrated = migrations.migrate(v3_save)
+assert_eq(v3_was_migrated, false, "Newer schema version is not migrated")
+assert_eq(unmigrated.schema_version, 3, "Newer schema version is preserved without downgrade")
+
 -- Test 6: Cloud Save Reconciliation Matrix
 local local_state = {
     schema_version = 2,
+    created_at = 1000,
     player = { stars = 5, coins = 200, inventory = { hammer = 1, rocket = 0, bomb = 0 } },
     progression = { max_unlocked_level = 7, completed_levels = { ["1"] = 3, ["2"] = 2 } },
     village = {
@@ -103,6 +132,7 @@ local local_state = {
 
 local cloud_state = {
     schema_version = 2,
+    created_at = 500,
     player = { stars = 3, coins = 350, inventory = { hammer = 2, rocket = 1, bomb = 0 } },
     progression = { max_unlocked_level = 9, completed_levels = { ["1"] = 3, ["2"] = 3, ["3"] = 2 } },
     village = {
@@ -115,18 +145,40 @@ local cloud_state = {
 
 local resolved, had_conflicts = cloud_sync.reconcile(local_state, cloud_state)
 assert_eq(had_conflicts, true, "Conflicts detected and reconciled")
+assert_eq(resolved.created_at, 500, "Earliest created_at timestamp is preserved")
 assert_eq(resolved.progression.max_unlocked_level, 9, "Max unlocked level uses MAX(7, 9) = 9")
 assert_eq(resolved.progression.completed_levels["2"], 3, "Level 2 star rating uses MAX(2, 3) = 3")
 assert_eq(#resolved.village.completed_tasks, 2, "Village completed tasks uses set union (both task_1 and task_2)")
-assert_eq(resolved.player.coins, 350, "Coins preserved via MAX(200, 350) = 350")
-assert_eq(resolved.player.inventory.hammer, 2, "Hammers preserved via MAX(1, 2) = 2")
+assert_eq(resolved.player.coins, 350, "Coins preserved via MAX(200, 350) fallback")
+assert_eq(resolved.player.inventory.hammer, 2, "Hammers preserved via MAX(1, 2) fallback")
 assert_eq(resolved.ledger_history["op_local_1"] ~= nil, true, "Local transaction preserved in ledger union")
 assert_eq(resolved.ledger_history["op_cloud_1"] ~= nil, true, "Cloud transaction preserved in ledger union")
+
+-- Test 6b: Reconciliation with transaction ledger deltas preserving spending
+local spend_local = {
+    schema_version = 2,
+    created_at = 500,
+    player = { stars = 0, coins = 50, inventory = { hammer = 1, rocket = 1, bomb = 1 } },
+    ledger_history = {
+        ["op_reward"] = { key = "coins", delta = 200 },
+        ["op_spend"] = { key = "coins", delta = -250 }
+    }
+}
+local spend_cloud = {
+    schema_version = 2,
+    created_at = 500,
+    player = { stars = 0, coins = 300, inventory = { hammer = 1, rocket = 1, bomb = 1 } },
+    ledger_history = {
+        ["op_reward"] = { key = "coins", delta = 200 }
+    }
+}
+local resolved_spend, _ = cloud_sync.reconcile(spend_local, spend_cloud)
+assert_eq(resolved_spend.player.coins, 50, "Coins correctly derived from base 100 + 200 - 250 = 50 preserving spend")
 
 -- Cleanup fixture directory
 os.remove(p_save)
 os.remove(p_tmp)
 os.remove(p_bak)
-os.execute("rmdir " .. test_dir:gsub("/", "\\"))
+remove_dir(test_dir)
 
 print(string.format("All tests passed! (%d/%d assertions)", passed_tests, total_tests))

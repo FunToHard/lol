@@ -166,7 +166,8 @@ function powerups.detonate_single(g, x, y)
         type = "single_detonation",
         powerup_type = p_type,
         origin = {x = x, y = y},
-        affected_cells = affected
+        affected_cells = affected,
+        cleared_cells = affected
     }
 end
 
@@ -193,7 +194,8 @@ function powerups.detonate_lantern_color(g, lx, ly, tx, ty)
         type = "lantern_color_clear",
         color = color,
         origin = {x = lx, y = ly},
-        affected_cells = affected
+        affected_cells = affected,
+        cleared_cells = affected
     }
 end
 
@@ -322,7 +324,8 @@ function powerups.detonate_combo(g, x1, y1, x2, y2)
         type = "combo_fusion",
         combo = combo_name,
         origin = {x = cx, y = cy},
-        affected_cells = affected
+        affected_cells = affected,
+        cleared_cells = affected
     }
 end
 

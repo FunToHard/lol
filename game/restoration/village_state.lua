@@ -100,6 +100,9 @@ function village_state.complete_task(state, task_id, chosen_style_idx, op_id)
     if not ok then
         return false, "INSUFFICIENT_STARS"
     end
+    if err == "ALREADY_PROCESSED" then
+        return false, "INVALID_TRANSACTION_ID"
+    end
 
     table.insert(state.completed_tasks, {
         task_id = task_id,

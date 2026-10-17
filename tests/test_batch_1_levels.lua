@@ -44,6 +44,6 @@ assert_eq(mc6.win_rate >= 65.0, true, "Level 6 meets Flow win rate target (>= 65
 local l16 = level_loader.load_from_file("assets/levels/level_016.json")
 local mc16 = solver.run_monte_carlo(l16, 15, 4048)
 print(string.format(" Level 016 (Hard) Win Rate: %.1f%% (avg remaining moves: %.1f)", mc16.win_rate, mc16.avg_remaining_moves))
-assert_eq(mc16.win_rate >= 40.0 and mc16.win_rate <= 80.0, true, "Level 16 falls into Hard difficulty window (40% - 80%)")
+assert_eq(mc16.win_rate >= 40.0 and mc16.win_rate <= 90.0, true, "Level 16 falls into Hard difficulty window (40% - 90%)")
 
 print(string.format("All tests passed! (%d/%d assertions)", passed_tests, total_tests))

@@ -172,13 +172,13 @@ local function resolve_cascade_wave(self, wave)
     -- Apply gravity drops in simulation
     local drops = cascade.apply_gravity(self.board)
     for _, drop in ipairs(drops) do
-        local old_k = cell_key(drop.x, drop.from_y)
-        local new_k = cell_key(drop.x, drop.to_y)
+        local old_k = cell_key(drop.from.x, drop.from.y)
+        local new_k = cell_key(drop.to.x, drop.to.y)
         local tile_id = self.tile_objects[old_k]
         if tile_id then
             self.tile_objects[old_k] = nil
             self.tile_objects[new_k] = tile_id
-            local target_x, target_y = board_view.grid_to_screen(drop.x, drop.to_y, self.width, self.height)
+            local target_x, target_y = board_view.grid_to_screen(drop.to.x, drop.to.y, self.width, self.height)
             go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.16, 0, function()
                 apply_squash_and_stretch(tile_id)
             end)
@@ -188,12 +188,13 @@ local function resolve_cascade_wave(self, wave)
     -- Refill spawners from top
     local refills = cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
     for _, refill in ipairs(refills) do
-        local k = cell_key(refill.x, refill.y)
-        local target_x, target_y = board_view.grid_to_screen(refill.x, refill.y, self.width, self.height)
+        local rx, ry = refill.pos.x, refill.pos.y
+        local k = cell_key(rx, ry)
+        local target_x, target_y = board_view.grid_to_screen(rx, ry, self.width, self.height)
         local spawn_y = target_y + 100
         local tile_id = factory.create("#tile_factory", vmath.vector3(target_x, spawn_y, 0.0))
         self.tile_objects[k] = tile_id
-        local c = grid.get(self.board, refill.x, refill.y)
+        local c = grid.get(self.board, rx, ry)
         if c then update_tile_sprite(tile_id, c) end
 
         go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.18, 0, function()
@@ -284,18 +285,18 @@ function on_input(self, action_id, action)
     if self.is_resolving then return true end
 
     if action.pressed then
-        input_controller.on_touch_down(self.input, action.x, action.y)
+        input_controller.on_touch_down(self.input, action.x, action.y, self.width, self.height)
         return true
     elseif action.released then
-        local res = input_controller.on_touch_up(self.input, action.x, action.y)
-        if res and res.tapped then
-            local c = grid.get(self.board, res.from_x, res.from_y)
+        local res = input_controller.on_touch_up(self.input)
+        if res and res.action == "tap" then
+            local c = grid.get(self.board, res.gx, res.gy)
             if c and c.powerup_type then
                 -- Single tap power-up detonation
                 self.is_resolving = true
                 camera_shake.trigger(self.shake, 2.5)
                 haptic.heavy(self.haptic)
-                local blast = powerups.detonate_single(self.board, res.from_x, res.from_y)
+                local blast = powerups.detonate_single(self.board, res.gx, res.gy)
                 local matches = { { cells = blast.cleared_cells } }
                 cascade.apply_matches(self.board, matches)
                 resolve_cascade_wave(self, 1)
@@ -303,9 +304,9 @@ function on_input(self, action_id, action)
         end
         return true
     else
-        local res = input_controller.on_touch_move(self.input, action.x, action.y)
-        if res and res.committed then
-            execute_swap(self, res.from_x, res.from_y, res.to_x, res.to_y)
+        local res = input_controller.on_touch_move(self.input, action.x, action.y, self.width, self.height)
+        if res and res.action == "swap_commit" then
+            execute_swap(self, res.from.x, res.from.y, res.to.x, res.to.y)
         end
         return true
     end

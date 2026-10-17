@@ -17,8 +17,9 @@ local COIN_REFILLS = {
 -- @param econ_ledger table Economy ledger state table.
 -- @param iap_svc table Configured IAP service instance.
 -- @param save_data table Active player save data table.
+-- @param base_dir string|nil Optional custom directory path for save persistence.
 -- @return table controller Initialized shop controller table.
-function shop_controller.new(econ_ledger, iap_svc, save_data)
+function shop_controller.new(econ_ledger, iap_svc, save_data, base_dir)
     assert(type(econ_ledger) == "table", "shop_controller requires an economy ledger")
     assert(type(iap_svc) == "table", "shop_controller requires an IAP service")
     assert(type(save_data) == "table", "shop_controller requires save data")
@@ -26,7 +27,9 @@ function shop_controller.new(econ_ledger, iap_svc, save_data)
     local instance = {
         ledger = econ_ledger,
         iap_service = iap_svc,
-        save_data = save_data
+        save_data = save_data,
+        base_dir = base_dir,
+        tx_counter = 0
     }
     setmetatable(instance, { __index = shop_controller })
     return instance
@@ -59,20 +62,26 @@ function shop_controller.buy_refill_with_coins(self, refill_id)
         return false, "INSUFFICIENT_COINS"
     end
 
-    local op_spend = "op_buy_refill_" .. refill_id .. "_" .. tostring(os.time())
-    local ok_deduct = ledger.apply_transaction(self.ledger, op_spend, "coins", -target.cost_coins, "shop_refill:" .. refill_id)
-    if not ok_deduct then
+    self.tx_counter = (self.tx_counter or 0) + 1
+    local purchase_id = string.format("refill_%s_%d_%d", refill_id, os.time and os.time() or 0, self.tx_counter)
+
+    local op_spend = "op_spend_" .. purchase_id
+    local ok_deduct, _, err_deduct = ledger.apply_transaction(self.ledger, op_spend, "coins", -target.cost_coins, "shop_refill:" .. refill_id)
+    if not ok_deduct or err_deduct == "ALREADY_PROCESSED" then
         return false, "INSUFFICIENT_COINS"
     end
 
-    local op_grant = "op_grant_refill_" .. refill_id .. "_" .. tostring(os.time())
-    ledger.apply_transaction(self.ledger, op_grant, target.item, target.count, "shop_refill_grant:" .. refill_id)
+    local op_grant = "op_grant_" .. purchase_id
+    local ok_grant = ledger.apply_transaction(self.ledger, op_grant, target.item, target.count, "shop_refill_grant:" .. refill_id)
+    if not ok_grant then
+        return false, "GRANT_FAILED"
+    end
 
     -- Sync and persist state
     self.save_data.player.coins = ledger.get_balance(self.ledger, "coins")
     self.save_data.player.inventory[target.item] = ledger.get_balance(self.ledger, target.item)
     self.save_data.ledger_history = self.ledger.history
-    save_manager.save(self.save_data)
+    save_manager.save(self.save_data, self.base_dir)
 
     return true, nil
 end
@@ -109,7 +118,7 @@ function shop_controller.buy_iap_product(self, product_id, on_complete)
             self.save_data.player.inventory[b_key] = ledger.get_balance(self.ledger, b_key)
         end
         self.save_data.ledger_history = self.ledger.history
-        save_manager.save(self.save_data)
+        save_manager.save(self.save_data, self.base_dir)
 
         if on_complete then
             on_complete(true, receipt)

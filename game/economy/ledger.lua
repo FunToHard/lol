@@ -63,6 +63,10 @@ function ledger.apply_transaction(state, op_id, key, delta, reason)
 
     -- Idempotency check: Return existing result if already processed
     if state.history[op_id] then
+        local record = state.history[op_id]
+        if record.key ~= key then
+            return false, ledger.get_balance(state, key), "KEY_MISMATCH"
+        end
         local current_bal = ledger.get_balance(state, key)
         return true, current_bal, "ALREADY_PROCESSED"
     end

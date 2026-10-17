@@ -25,6 +25,15 @@ function cloud_sync.reconcile(local_data, cloud_data)
     resolved.schema_version = math.max(local_data.schema_version or 1, cloud_data.schema_version or 1)
     resolved.last_updated = os.time and os.time() or 0
 
+    -- Preserve earliest created_at timestamp
+    local loc_created = local_data.created_at or 0
+    local cld_created = cloud_data.created_at or 0
+    if loc_created > 0 and cld_created > 0 then
+        resolved.created_at = math.min(loc_created, cld_created)
+    else
+        resolved.created_at = math.max(loc_created, cld_created)
+    end
+
     -- 1. Progression: Max level is always preserved
     local loc_prog = local_data.progression or {}
     local cld_prog = cloud_data.progression or {}
@@ -104,18 +113,53 @@ function cloud_sync.reconcile(local_data, cloud_data)
     end
     resolved.ledger_history = final_hist
 
-    -- Player balances: Max safe balance or latest state
+    -- Player balances: Reconstruct from ledger history deltas to preserve spending
     local loc_p = local_data.player or {}
     local cld_p = cloud_data.player or {}
-    resolved.player = {
-        stars = math.max(loc_p.stars or 0, cld_p.stars or 0),
-        coins = math.max(loc_p.coins or 0, cld_p.coins or 0),
-        inventory = {
-            hammer = math.max((loc_p.inventory and loc_p.inventory.hammer) or 0, (cld_p.inventory and cld_p.inventory.hammer) or 0),
-            rocket = math.max((loc_p.inventory and loc_p.inventory.rocket) or 0, (cld_p.inventory and cld_p.inventory.rocket) or 0),
-            bomb = math.max((loc_p.inventory and loc_p.inventory.bomb) or 0, (cld_p.inventory and cld_p.inventory.bomb) or 0)
+
+    local base_stars = 0
+    local base_coins = 100
+    local base_inv = { hammer = 1, rocket = 1, bomb = 1 }
+
+    local delta_stars = 0
+    local delta_coins = 0
+    local delta_inv = { hammer = 0, rocket = 0, bomb = 0 }
+    local has_ledger_transactions = false
+
+    for _, record in pairs(final_hist) do
+        if record.key and record.delta then
+            has_ledger_transactions = true
+            if record.key == "stars" then
+                delta_stars = delta_stars + record.delta
+            elseif record.key == "coins" then
+                delta_coins = delta_coins + record.delta
+            elseif delta_inv[record.key] ~= nil then
+                delta_inv[record.key] = delta_inv[record.key] + record.delta
+            end
+        end
+    end
+
+    if has_ledger_transactions then
+        resolved.player = {
+            stars = math.max(0, base_stars + delta_stars),
+            coins = math.max(0, base_coins + delta_coins),
+            inventory = {
+                hammer = math.max(0, base_inv.hammer + delta_inv.hammer),
+                rocket = math.max(0, base_inv.rocket + delta_inv.rocket),
+                bomb = math.max(0, base_inv.bomb + delta_inv.bomb)
+            }
         }
-    }
+    else
+        resolved.player = {
+            stars = math.max(loc_p.stars or 0, cld_p.stars or 0),
+            coins = math.max(loc_p.coins or 0, cld_p.coins or 0),
+            inventory = {
+                hammer = math.max((loc_p.inventory and loc_p.inventory.hammer) or 0, (cld_p.inventory and cld_p.inventory.hammer) or 0),
+                rocket = math.max((loc_p.inventory and loc_p.inventory.rocket) or 0, (cld_p.inventory and cld_p.inventory.rocket) or 0),
+                bomb = math.max((loc_p.inventory and loc_p.inventory.bomb) or 0, (cld_p.inventory and cld_p.inventory.bomb) or 0)
+            }
+        }
+    end
 
     return resolved, had_conflicts
 end

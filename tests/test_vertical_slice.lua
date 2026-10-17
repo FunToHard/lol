@@ -31,8 +31,30 @@ print("==================================================")
 print("   LANTERN GROOVE - 25-LEVEL VERTICAL SLICE TEST  ")
 print("==================================================")
 
+local is_windows = package.config:sub(1, 1) == "\\"
+
+--- Creates a directory portably across Windows cmd and POSIX shells.
+-- @param dir string Directory path.
+local function make_dir(dir)
+    if is_windows then
+        os.execute("mkdir " .. dir:gsub("/", "\\") .. " 2>nul")
+    else
+        os.execute("mkdir -p " .. dir .. " 2>/dev/null")
+    end
+end
+
+--- Removes a directory portably across Windows cmd and POSIX shells.
+-- @param dir string Directory path.
+local function remove_dir(dir)
+    if is_windows then
+        os.execute("rmdir /s /q " .. dir:gsub("/", "\\") .. " 2>nul")
+    else
+        os.execute("rm -rf " .. dir .. " 2>/dev/null")
+    end
+end
+
 local test_dir = "tests/fixtures_vslice"
-os.execute("mkdir " .. test_dir:gsub("/", "\\"))
+make_dir(test_dir)
 
 -- Start with a clean new-game state
 local save_data = save_manager.create_default_state()
@@ -58,18 +80,31 @@ for lvl_id = 1, 25 do
     local def = level_loader.load_from_file(level_path)
     local flow = level_flow.new(econ, ads, save_data, lvl_id, test_dir)
 
-    -- Play level using strategic heuristic solver
-    local rng = prng.new(base_seed + lvl_id * 101)
-    local sim_res = solver.simulate_game(def, "strategic", rng)
-
-    -- If solver was tight on moves, simulate fair continuation
-    if not sim_res.won then
-        if flow:can_use_ad_continuation() then
+    -- Play level using strategic heuristic solver (allowing fair retries on hard levels)
+    local sim_res = nil
+    for attempt = 1, 5 do
+        local rng = prng.new(base_seed + lvl_id * 101 + attempt * 17)
+        sim_res = solver.simulate_game(def, "strategic", rng)
+        if sim_res.won then
+            break
+        elseif flow:can_use_ad_continuation() then
             local dummy_tracker = { moves_remaining = 0, status = "LOST" }
             flow:watch_ad_for_extra_moves(dummy_tracker)
             assert_eq(dummy_tracker.moves_remaining, 3, "Ad continuation granted +3 moves")
         end
     end
+
+    -- Verify ad continuation functionality on level 1
+    if lvl_id == 1 then
+        assert_eq(flow:can_use_ad_continuation(), true, "Ad continuation is available on fresh level")
+        local dummy_tracker = { moves_remaining = 0, status = "LOST" }
+        flow:watch_ad_for_extra_moves(dummy_tracker)
+        assert_eq(dummy_tracker.moves_remaining, 3, "Ad continuation granted +3 moves")
+        assert_eq(flow:can_use_ad_continuation(), false, "Ad continuation capped after 1 use")
+    end
+
+    -- Require simulation victory before recording level win
+    assert_eq(sim_res.won, true, string.format("Level %d simulation victory verified", lvl_id))
 
     -- Complete level victory flow
     local reward = flow:on_level_won()
@@ -115,7 +150,7 @@ local p1, p2, p3 = save_manager.get_save_paths(test_dir)
 os.remove(p1)
 os.remove(p2)
 os.remove(p3)
-os.execute("rmdir " .. test_dir:gsub("/", "\\"))
+remove_dir(test_dir)
 
 print("==================================================")
 print(string.format(" VERTICAL SLICE VALIDATION PASSED! (%d/%d assertions)", passed_tests, total_tests))

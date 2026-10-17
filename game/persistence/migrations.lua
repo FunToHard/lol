@@ -46,6 +46,9 @@ function migrations.migrate(save_data)
     assert(type(save_data) == "table", "Save data to migrate must be a table")
 
     local current_version = save_data.schema_version or 0
+    if current_version > migrations.CURRENT_SCHEMA_VERSION then
+        return save_data, false
+    end
     local was_migrated = false
 
     for target_version = current_version + 1, migrations.CURRENT_SCHEMA_VERSION do

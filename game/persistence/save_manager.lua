@@ -130,9 +130,11 @@ function save_manager.save(state, base_dir)
     end
 
     -- Step 4: Atomically rename temp buffer to save.json
-    -- On Windows, os.rename will fail if target exists, so remove target first
-    os.remove(p_save)
     local renamed, rename_err = os.rename(p_tmp, p_save)
+    if not renamed then
+        os.remove(p_save)
+        renamed, rename_err = os.rename(p_tmp, p_save)
+    end
     if not renamed then
         -- Fallback: copy temp to save
         local copied = copy_file(p_tmp, p_save)

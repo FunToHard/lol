@@ -30,7 +30,9 @@ function level_flow.new(econ_ledger, ads_svc, save_data, level_id, base_dir)
         save_data = save_data,
         level_id = level_id or 1,
         base_dir = base_dir,
-        ad_continuation_used = false
+        ad_continuation_used = false,
+        ad_continuation_pending = false,
+        coin_continue_count = 0
     }
     setmetatable(instance, { __index = level_flow })
     return instance
@@ -87,9 +89,10 @@ function level_flow.buy_extra_moves_with_coins(self, tracker)
         return false, 0, "INSUFFICIENT_COINS"
     end
 
-    local op_id = string.format("op_continue_coins_lvl_%d_%d", self.level_id, os.time and os.time() or 0)
-    local ok = ledger.apply_transaction(self.ledger, op_id, "coins", -level_flow.COIN_CONTINUATION_COST, "continue_moves:" .. self.level_id)
-    if not ok then
+    self.coin_continue_count = (self.coin_continue_count or 0) + 1
+    local op_id = string.format("op_continue_coins_lvl_%d_%d_%d", self.level_id, os.time and os.time() or 0, self.coin_continue_count)
+    local ok, _, err = ledger.apply_transaction(self.ledger, op_id, "coins", -level_flow.COIN_CONTINUATION_COST, "continue_moves:" .. self.level_id)
+    if not ok or err == "ALREADY_PROCESSED" then
         return false, 0, "INSUFFICIENT_COINS"
     end
 
@@ -107,7 +110,7 @@ end
 -- @param self table Level flow controller instance.
 -- @return boolean is_available True if ad continuation has not yet been used this level attempt.
 function level_flow.can_use_ad_continuation(self)
-    if self.ad_continuation_used then return false end
+    if self.ad_continuation_used or self.ad_continuation_pending then return false end
     return self.ads_service:is_rewarded_ready()
 end
 
@@ -116,12 +119,18 @@ end
 -- @param tracker table Level tracker instance to receive extra moves.
 -- @param on_complete function Completion callback: `on_complete(success, moves_added, error_or_reason)`.
 function level_flow.watch_ad_for_extra_moves(self, tracker, on_complete)
-    if self.ad_continuation_used then
+    if self.ad_continuation_used or self.ad_continuation_pending then
         if on_complete then on_complete(false, 0, "AD_CONTINUATION_EXHAUSTED") end
         return
     end
 
+    self.ad_continuation_pending = true
+    local reward_granted = false
+
     self.ads_service:show_rewarded(function()
+        if reward_granted then return end
+        reward_granted = true
+        self.ad_continuation_pending = false
         self.ad_continuation_used = true
         tracker.moves_remaining = tracker.moves_remaining + level_flow.AD_CONTINUATION_MOVES
         tracker.status = "IN_PROGRESS"
@@ -130,6 +139,7 @@ function level_flow.watch_ad_for_extra_moves(self, tracker, on_complete)
             on_complete(true, level_flow.AD_CONTINUATION_MOVES, "REWARD_GRANTED")
         end
     end, nil, function(err_msg)
+        self.ad_continuation_pending = false
         if on_complete then
             on_complete(false, 0, err_msg or "AD_FAILED")
         end
