@@ -106,4 +106,20 @@ village_controller.close_picker(ctrl)
 assert_false(ctrl.picker_open, "Picker closed without confirming")
 assert_eq(ledger.get_balance(econ, "stars"), 2, "Stars untouched")
 
+-- Test 8: Edge Cases & Input Validation
+local confirm_fail_ok, confirm_fail_err = village_controller.confirm_selection(ctrl)
+assert_false(confirm_fail_ok, "confirm_selection fails when picker is not open")
+assert_eq(confirm_fail_err, "PICKER_NOT_OPEN", "Error code is PICKER_NOT_OPEN")
+
+local bad_task_ok, bad_task_err = village_controller.open_picker(ctrl, "non_existent_task", "RESTORE")
+assert_false(bad_task_ok, "open_picker fails for non-existent task")
+assert_eq(bad_task_err, "TASK_NOT_FOUND", "Error code is TASK_NOT_FOUND")
+
+village_controller.open_picker(ctrl, "repair_stone_hearth", "RESTORE")
+assert_false(village_controller.select_style(ctrl, 0), "Style index 0 rejected")
+assert_false(village_controller.select_style(ctrl, 4), "Style index 4 rejected")
+assert_false(village_controller.select_style(ctrl, nil), "Nil style index rejected")
+assert_true(village_controller.select_style(ctrl, 1), "Style index 1 accepted")
+village_controller.close_picker(ctrl)
+
 print(string.format("All tests passed! (%d/%d assertions)", passed_tests, total_tests))
