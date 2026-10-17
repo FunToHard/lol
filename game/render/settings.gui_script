@@ -170,6 +170,7 @@ function on_input(self, action_id, action)
             settings_controller.close(self.ctrl)
             refresh_view(self)
             pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+            pcall(msg.post, "#map_gui", "refresh")
         end
         return true
     end
