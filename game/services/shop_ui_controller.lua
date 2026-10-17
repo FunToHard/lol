@@ -107,6 +107,17 @@ end
 -- @param product_id string Registered SKU product identifier.
 -- @param on_complete function|nil Optional completion callback receiving `(success, error_or_receipt)`.
 function shop_ui_controller.buy_iap(ctrl, product_id, on_complete)
+    for _, p in ipairs(ctrl.iap_service:get_catalog()) do
+        if p.id == product_id and (p.type == "non_consumable" or p.id == "no_ads" or p.id == "pack_starter") and ctrl.save_data.player.no_ads then
+            ctrl.status_message = "Already owned!"
+            ctrl.status_success = false
+            if on_complete then
+                on_complete(false, "ALREADY_OWNED")
+            end
+            return
+        end
+    end
+
     ctrl.shop:buy_iap_product(product_id, function(success, res)
         if success then
             ctrl.status_message = "Bundle unlocked!"
@@ -153,7 +164,7 @@ function shop_ui_controller.get_view_data(ctrl)
 
     local iap_catalog = {}
     for _, p in ipairs(ctrl.iap_service:get_catalog()) do
-        local is_owned = (p.id == "no_ads" and no_ads)
+        local is_owned = (p.type == "non_consumable" or p.id == "no_ads" or p.id == "pack_starter") and no_ads
         table.insert(iap_catalog, {
             id = p.id,
             title = p.title,

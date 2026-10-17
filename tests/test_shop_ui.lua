@@ -100,14 +100,28 @@ assert_eq(view.status_success, true, "Status success flag is true")
 -- 6. Owned Entitlement Flag in Catalog
 view = shop_ui_controller.get_view_data(ctrl)
 local no_ads_item = nil
+local starter_item = nil
 for _, item in ipairs(view.iap_catalog) do
     if item.id == "no_ads" then
         no_ads_item = item
-        break
+    elseif item.id == "pack_starter" then
+        starter_item = item
     end
 end
 assert_eq(no_ads_item ~= nil, true, "No Ads product found in catalog")
 assert_eq(no_ads_item.is_owned, true, "No Ads product marked as owned")
+assert_eq(starter_item ~= nil, true, "Starter pack found in catalog")
+assert_eq(starter_item.is_owned, true, "Starter pack marked as owned")
+
+-- Repurchase of owned item should fail
+local repurchased = false
+local repurchase_err = nil
+shop_ui_controller.buy_iap(ctrl, "no_ads", function(success, err)
+    repurchased = success
+    repurchase_err = err
+end)
+assert_eq(repurchased, false, "Repurchase of owned entitlement rejected")
+assert_eq(repurchase_err, "ALREADY_OWNED", "Error returned is ALREADY_OWNED")
 
 -- 7. Close Dialog & Clear Status
 shop_ui_controller.close(ctrl)

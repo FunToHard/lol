@@ -71,7 +71,7 @@ local function refresh_view(self)
         gui.set_enabled(b.lbl, is_boosters)
         if is_boosters and view.refill_catalog[i] then
             local ref = view.refill_catalog[i]
-            gui.set_text(b.title, string.format("%dx %s", ref.count, ref.title))
+            gui.set_text(b.title, ref.title)
             gui.set_text(b.lbl, ref.cost_text .. " Coins")
             if ref.can_afford then
                 gui.set_color(b.btn, vmath.vector4(0.3, 0.8, 0.4, 1.0))
@@ -224,19 +224,24 @@ function on_input(self, action_id, action)
                 refresh_view(self)
                 if ok then
                     pcall(msg.post, "#map_gui", "refresh")
-                    pcall(msg.post, "#hud", "refresh_boosters")
+                    pcall(msg.post, "#board", "refresh_boosters")
                 end
                 return true
             end
         end
     elseif self.ctrl.active_tab == "packs" then
-        for _, p in ipairs(self.pack_nodes) do
+        local view = shop_ui_controller.get_view_data(self.ctrl)
+        for i, p in ipairs(self.pack_nodes) do
             if gui.pick_node(p.btn, action.x, action.y) then
+                local pack_info = view.iap_catalog[i]
+                if pack_info and pack_info.is_owned then
+                    return true
+                end
                 shop_ui_controller.buy_iap(self.ctrl, p.id, function(ok)
                     refresh_view(self)
                     if ok then
                         pcall(msg.post, "#map_gui", "refresh")
-                        pcall(msg.post, "#hud", "refresh_boosters")
+                        pcall(msg.post, "#board", "refresh_boosters")
                     end
                 end)
                 refresh_view(self)
