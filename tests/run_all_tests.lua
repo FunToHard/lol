@@ -18,6 +18,7 @@ local test_suites = {
     "tests/test_board_view.lua",
     "tests/test_input_controller.lua",
     "tests/test_render.lua",
+    "tests/test_hud.lua",
     "tests/test_haptic.lua",
     "tests/test_effects.lua",
     "tests/test_level_loader.lua",

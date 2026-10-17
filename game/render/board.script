@@ -13,6 +13,8 @@ local input_controller = require("game.render.input_controller")
 local camera_shake = require("game.render.camera_shake")
 local audio_manager = require("game.render.audio_manager")
 local haptic = require("game.render.haptic")
+local level_loader = require("game.board.level_loader")
+local level_tracker = require("game.board.level_tracker")
 local effects = require("game.render.effects")
 
 local ALLOWED_COLORS = { "amber", "amethyst", "emerald", "ruby", "sapphire" }
@@ -48,14 +50,48 @@ local function apply_squash_and_stretch(tile_id)
     end)
 end
 
+--- Clears active tile objects, resets board grid and level tracker.
+-- @param self table Script instance table.
+local function restart_level(self)
+    for _, tid in pairs(self.tile_objects) do
+        if tid then go.delete(tid) end
+    end
+    self.tile_objects = {}
+
+    if self.level_def then
+        self.board = level_loader.setup_board(self.level_def, self.rng)
+        self.tracker = level_tracker.new(self.level_def)
+    else
+        self.board = grid.create(self.width, self.height)
+        cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+        reshuffle.execute(self.board, self.rng)
+        self.tracker = level_tracker.new({ level_id = 1, moves = 25, goals = {} })
+    end
+
+    msg.post("#hud", "init_hud", { level_def = self.level_def })
+
+    for gy = 1, self.height do
+        for gx = 1, self.width do
+            local k = cell_key(gx, gy)
+            local cell_data = grid.get(self.board, gx, gy)
+            if cell_data and (cell_data.tile_type or cell_data.powerup_type) then
+                local px, py = board_view.grid_to_screen(gx, gy, self.width, self.height)
+                local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                    update_tile_sprite(tile_id, cell_data)
+                end
+            end
+        end
+    end
+    self.is_resolving = false
+end
+
 --- Initializes the board script component, input listeners, and simulation grid.
 -- @param self table Script instance table.
 function init(self)
     msg.post(".", "acquire_input_focus")
-    self.width = 8
-    self.height = 8
     self.rng = prng.new(os.time and os.time() or 12345)
-    self.board = grid.create(self.width, self.height)
     self.input = input_controller.new()
     self.shake = camera_shake.new()
     self.audio = audio_manager.new(false, false)
@@ -63,10 +99,35 @@ function init(self)
     self.tile_objects = {}
     self.cell_objects = {}
     self.is_resolving = false
+    self.is_paused = false
 
-    -- Populate initial board and eliminate instant pre-matches
-    cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
-    reshuffle.execute(self.board, self.rng)
+    -- Load Level 1 definition or fallback to standard 8x8 configuration
+    local ok, def = pcall(level_loader.load_from_file, "assets/levels/level_001.json")
+    if ok and def then
+        self.level_def = def
+        self.width = def.grid.width or 8
+        self.height = def.grid.height or 8
+        self.board = level_loader.setup_board(def, self.rng)
+        self.tracker = level_tracker.new(def)
+    else
+        self.width = 8
+        self.height = 8
+        self.level_def = {
+            level_id = 1,
+            moves = 25,
+            goals = {
+                { type = "collect_color", target = "amber", count = 15 },
+                { type = "collect_color", target = "ruby", count = 10 }
+            }
+        }
+        self.board = grid.create(self.width, self.height)
+        cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+        reshuffle.execute(self.board, self.rng)
+        self.tracker = level_tracker.new(self.level_def)
+    end
+
+    -- Initialize HUD overlay with active level targets
+    msg.post("#hud", "init_hud", { level_def = self.level_def })
 
     -- Spawn recessed background cells and interactive pieces
     for gy = 1, self.height do
@@ -133,6 +194,27 @@ local function resolve_cascade_wave(self, wave)
     -- Play pitched cascade sound and tactile feedback
     audio_manager.play_cascade(self.audio, wave)
     haptic.impact(self.haptic)
+
+    -- Record matches in tracker and award score
+    local cleared_colors = {}
+    local total_cleared = 0
+    for _, m in ipairs(matches) do
+        for _, pos in ipairs(m.cells) do
+            local c = grid.get(self.board, pos.x, pos.y)
+            if c and c.tile_type then
+                table.insert(cleared_colors, c.tile_type)
+            end
+            total_cleared = total_cleared + 1
+        end
+    end
+
+    if self.tracker and #cleared_colors > 0 then
+        level_tracker.record_matches(self.tracker, cleared_colors)
+        msg.post("#hud", "update_goals", { tracker_goals = self.tracker.goals })
+    end
+
+    local pts = total_cleared * 10 * wave
+    msg.post("#hud", "add_score", { points = pts })
 
     -- Animate match burst and clear visual tile objects
     local spawn_map = {}
@@ -249,6 +331,12 @@ local function execute_swap(self, fx, fy, tx, ty)
     self.is_resolving = true
     haptic.tick(self.haptic)
 
+    -- Deduct move in tracker and notify HUD
+    if self.tracker then
+        local remaining = level_tracker.record_move(self.tracker)
+        msg.post("#hud", "update_moves", { moves = remaining })
+    end
+
     -- Smooth positional tween
     local p_from_x, p_from_y = board_view.grid_to_screen(fx, fy, self.width, self.height)
     local p_to_x, p_to_y = board_view.grid_to_screen(tx, ty, self.width, self.height)
@@ -291,7 +379,7 @@ end
 -- @return boolean consumed True if the input was consumed.
 function on_input(self, action_id, action)
     if action_id ~= hash("touch") then return false end
-    if self.is_resolving then return true end
+    if self.is_paused or self.is_resolving then return true end
 
     if action.pressed then
         input_controller.on_touch_down(self.input, action.x, action.y, self.width, self.height)
@@ -318,6 +406,25 @@ function on_input(self, action_id, action)
             execute_swap(self, res.from.x, res.from.y, res.to.x, res.to.y)
         end
         return true
+    end
+end
+
+--- Handles messages dispatched to the board script (pause, resume, restart, quit).
+-- @param self table Script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("pause_game") then
+        self.is_paused = true
+    elseif message_id == hash("resume_game") then
+        self.is_paused = false
+    elseif message_id == hash("restart_level") then
+        self.is_paused = false
+        restart_level(self)
+    elseif message_id == hash("quit_to_map") then
+        self.is_paused = false
+        pcall(msg.post, "main:/main#flow", "switch_scene", { scene = "map" })
     end
 end
 
