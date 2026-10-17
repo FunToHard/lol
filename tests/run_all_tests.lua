@@ -28,6 +28,7 @@ local test_suites = {
     "tests/test_economy.lua",
     "tests/test_persistence.lua",
     "tests/test_village.lua",
+    "tests/test_village_ui.lua",
     "tests/test_services.lua",
     "tests/test_scene_switcher.lua",
     "tests/test_level_end.lua",

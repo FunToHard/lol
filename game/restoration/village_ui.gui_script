@@ -1,0 +1,261 @@
+--- GUI script driving the woodland village renovation task drawer, 3-style picker, and companion emotes.
+-- Binds village_controller view-model data directly to Defold GUI visual nodes.
+
+local village_controller = require("game.restoration.village_controller")
+local save_manager = require("game.persistence.save_manager")
+local ledger = require("game.economy.ledger")
+local village_state = require("game.restoration.village_state")
+local companion = require("game.restoration.companion")
+
+--- Updates all visual GUI nodes based on current village_controller view snapshot.
+-- @param self table GUI script instance table.
+local function refresh_view(self)
+    if not self.ctrl then return end
+    local view = village_controller.get_view_data(self.ctrl)
+
+    -- Currency & Area Progress
+    gui.set_text(self.txt_stars, tostring(view.stars))
+    gui.set_text(self.txt_coins, tostring(view.coins))
+    gui.set_text(self.area_title, string.format("Hearthstone Courtyard (%d/%d)", view.area_completed, view.area_total))
+
+    -- Companion Speech Bubble
+    local comp_text = string.format("%s: %s", view.companion_name, view.companion_dialogue)
+    gui.set_text(self.companion_txt, comp_text)
+
+    -- Active Task Drawer
+    local show_drawer = view.drawer_open
+    gui.set_enabled(self.drawer_root, show_drawer)
+    gui.set_enabled(self.task_title, show_drawer)
+    gui.set_enabled(self.task_cost_badge, show_drawer)
+    gui.set_enabled(self.task_cost_star, show_drawer)
+    gui.set_enabled(self.task_cost_txt, show_drawer)
+    gui.set_enabled(self.btn_restore, show_drawer)
+    gui.set_enabled(self.lbl_restore, show_drawer)
+
+    if show_drawer then
+        if view.active_task then
+            gui.set_text(self.task_title, view.active_task.title)
+            gui.set_text(self.task_cost_txt, string.format("%d Spark%s", view.active_task.cost, view.active_task.cost > 1 and "s" or ""))
+
+            if view.active_task.can_afford then
+                gui.set_color(self.btn_restore, vmath.vector4(1, 1, 1, 1))
+                gui.set_text(self.lbl_restore, "RESTORE")
+            else
+                gui.set_color(self.btn_restore, vmath.vector4(0.5, 0.5, 0.5, 0.6))
+                gui.set_text(self.lbl_restore, "NEED SPARKS")
+            end
+        else
+            gui.set_text(self.task_title, "All Courtyard Tasks Complete!")
+            gui.set_text(self.task_cost_txt, "Max Level")
+            gui.set_color(self.btn_restore, vmath.vector4(0.5, 0.5, 0.5, 0.4))
+            gui.set_text(self.lbl_restore, "COMPLETED")
+        end
+    end
+
+    -- 3-Style Picker Modal
+    local show_picker = (view.picker_open and view.picker ~= nil)
+    gui.set_enabled(self.picker_backdrop, show_picker)
+    gui.set_enabled(self.picker_card, show_picker)
+    gui.set_enabled(self.picker_title, show_picker)
+    gui.set_enabled(self.picker_subtitle, show_picker)
+    gui.set_enabled(self.btn_cancel_picker, show_picker)
+    gui.set_enabled(self.lbl_cancel_picker, show_picker)
+    gui.set_enabled(self.style_1_card, show_picker)
+    gui.set_enabled(self.style_1_lbl, show_picker)
+    gui.set_enabled(self.style_1_tag, show_picker)
+    gui.set_enabled(self.style_2_card, show_picker)
+    gui.set_enabled(self.style_2_lbl, show_picker)
+    gui.set_enabled(self.style_2_tag, show_picker)
+    gui.set_enabled(self.style_3_card, show_picker)
+    gui.set_enabled(self.style_3_lbl, show_picker)
+    gui.set_enabled(self.style_3_tag, show_picker)
+    gui.set_enabled(self.btn_confirm_style, show_picker)
+    gui.set_enabled(self.lbl_confirm_style, show_picker)
+
+    if show_picker then
+        gui.set_text(self.picker_subtitle, view.picker.task_title)
+
+        local s1 = view.picker.styles[1]
+        local s2 = view.picker.styles[2]
+        local s3 = view.picker.styles[3]
+
+        if s1 then
+            gui.set_text(self.style_1_lbl, "1. " .. s1.name)
+            gui.set_enabled(self.style_1_check, s1.is_selected)
+            gui.set_color(self.style_1_card, s1.is_selected and vmath.vector4(1, 0.95, 0.7, 1) or vmath.vector4(1, 1, 1, 1))
+        end
+        if s2 then
+            gui.set_text(self.style_2_lbl, "2. " .. s2.name)
+            gui.set_enabled(self.style_2_check, s2.is_selected)
+            gui.set_color(self.style_2_card, s2.is_selected and vmath.vector4(1, 0.95, 0.7, 1) or vmath.vector4(1, 1, 1, 1))
+        end
+        if s3 then
+            gui.set_text(self.style_3_lbl, "3. " .. s3.name)
+            gui.set_enabled(self.style_3_check, s3.is_selected)
+            gui.set_color(self.style_3_card, s3.is_selected and vmath.vector4(1, 0.95, 0.7, 1) or vmath.vector4(1, 1, 1, 1))
+        end
+    else
+        gui.set_enabled(self.style_1_check, false)
+        gui.set_enabled(self.style_2_check, false)
+        gui.set_enabled(self.style_3_check, false)
+    end
+end
+
+--- Initializes GUI nodes, input focus, and restores persistent state.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    -- Top bar & currency nodes
+    self.top_bar = gui.get_node("top_bar")
+    self.btn_back = gui.get_node("btn_back")
+    self.lbl_back = gui.get_node("lbl_back")
+    self.txt_stars = gui.get_node("txt_stars")
+    self.txt_coins = gui.get_node("txt_coins")
+    self.area_title = gui.get_node("area_title")
+
+    -- Companion speech bubble
+    self.companion_bubble = gui.get_node("companion_bubble")
+    self.companion_txt = gui.get_node("companion_txt")
+
+    -- Task drawer nodes
+    self.drawer_root = gui.get_node("drawer_root")
+    self.drawer_tab = gui.get_node("drawer_tab")
+    self.drawer_tab_lbl = gui.get_node("drawer_tab_lbl")
+    self.task_title = gui.get_node("task_title")
+    self.task_cost_badge = gui.get_node("task_cost_badge")
+    self.task_cost_star = gui.get_node("task_cost_star")
+    self.task_cost_txt = gui.get_node("task_cost_txt")
+    self.btn_restore = gui.get_node("btn_restore")
+    self.lbl_restore = gui.get_node("lbl_restore")
+
+    -- 3-Style Picker modal nodes
+    self.picker_backdrop = gui.get_node("picker_backdrop")
+    self.picker_card = gui.get_node("picker_card")
+    self.picker_title = gui.get_node("picker_title")
+    self.picker_subtitle = gui.get_node("picker_subtitle")
+    self.btn_cancel_picker = gui.get_node("btn_cancel_picker")
+    self.lbl_cancel_picker = gui.get_node("lbl_cancel_picker")
+
+    self.style_1_card = gui.get_node("style_1_card")
+    self.style_1_lbl = gui.get_node("style_1_lbl")
+    self.style_1_tag = gui.get_node("style_1_tag")
+    self.style_1_check = gui.get_node("style_1_check")
+
+    self.style_2_card = gui.get_node("style_2_card")
+    self.style_2_lbl = gui.get_node("style_2_lbl")
+    self.style_2_tag = gui.get_node("style_2_tag")
+    self.style_2_check = gui.get_node("style_2_check")
+
+    self.style_3_card = gui.get_node("style_3_card")
+    self.style_3_lbl = gui.get_node("style_3_lbl")
+    self.style_3_tag = gui.get_node("style_3_tag")
+    self.style_3_check = gui.get_node("style_3_check")
+
+    self.btn_confirm_style = gui.get_node("btn_confirm_style")
+    self.lbl_confirm_style = gui.get_node("lbl_confirm_style")
+
+    -- Load persistent save data and instantiate controller
+    self.save_data = save_manager.load()
+    local p = self.save_data.player or {}
+    self.ledger = ledger.new({
+        balances = {
+            stars = p.stars or 0,
+            coins = p.coins or 100,
+            boosters = p.inventory or { hammer = 1, rocket = 1, bomb = 1 }
+        },
+        history = self.save_data.ledger_history or {}
+    })
+    self.village = village_state.new(self.save_data.village, self.ledger)
+    self.companion = companion.new("Pip")
+    self.ctrl = village_controller.new(self.village, self.companion, self.ledger)
+
+    refresh_view(self)
+end
+
+--- Handles dispatched messages for syncing village state.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("refresh_village_ui") then
+        refresh_view(self)
+    end
+end
+
+--- Handles user touch clicks across drawer buttons, style cards, and navigation.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Action event data {x, y, pressed, released}.
+-- @return boolean consumed True if touch event was processed.
+function on_input(self, action_id, action)
+    if action_id ~= hash("touch") or not action.pressed then
+        return false
+    end
+
+    -- 1. Picker Modal Clicks (Modal blocks clicks behind it)
+    if self.ctrl and self.ctrl.picker_open then
+        if gui.pick_node(self.style_1_card, action.x, action.y) then
+            village_controller.select_style(self.ctrl, 1)
+            refresh_view(self)
+            return true
+        elseif gui.pick_node(self.style_2_card, action.x, action.y) then
+            village_controller.select_style(self.ctrl, 2)
+            refresh_view(self)
+            return true
+        elseif gui.pick_node(self.style_3_card, action.x, action.y) then
+            village_controller.select_style(self.ctrl, 3)
+            refresh_view(self)
+            return true
+        elseif gui.pick_node(self.btn_confirm_style, action.x, action.y) then
+            local ok, res = village_controller.confirm_selection(self.ctrl)
+            if ok then
+                -- Sync persistent save data atomically
+                self.save_data.player.stars = ledger.get_balance(self.ledger, "stars")
+                self.save_data.village.completed_tasks = self.village.completed_tasks
+                self.save_data.village.chosen_styles = self.village.chosen_styles
+                self.save_data.ledger_history = self.ledger.history
+                save_manager.save(self.save_data)
+                refresh_view(self)
+            end
+            return true
+        elseif gui.pick_node(self.btn_cancel_picker, action.x, action.y) then
+            village_controller.close_picker(self.ctrl)
+            refresh_view(self)
+            return true
+        end
+        return true -- Block click-through to village behind modal
+    end
+
+    -- 2. Top Navigation Bar
+    if gui.pick_node(self.btn_back, action.x, action.y) then
+        pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+        return true
+    end
+
+    -- 3. Drawer Toggle Tab
+    if gui.pick_node(self.drawer_tab, action.x, action.y) then
+        village_controller.toggle_drawer(self.ctrl)
+        refresh_view(self)
+        return true
+    end
+
+    -- 4. Restore Active Task Button
+    if gui.pick_node(self.btn_restore, action.x, action.y) then
+        local active = village_state.get_active_task(self.village)
+        if active and village_state.can_complete_task(self.village, active.id) then
+            village_controller.open_picker(self.ctrl, active.id, "RESTORE")
+            refresh_view(self)
+        end
+        return true
+    end
+
+    return false
+end
+
+--- Releases input focus when finalized.
+-- @param self table GUI script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end
