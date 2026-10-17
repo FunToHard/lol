@@ -1,0 +1,184 @@
+--- GUI script governing the Settings options dialog (SFX, Music, Haptic toggles, and data reset).
+-- Binds settings_controller view-model data directly to Defold GUI visual nodes.
+
+local settings_controller = require("game.services.settings_controller")
+local save_manager = require("game.persistence.save_manager")
+
+--- Refreshes all visual GUI nodes based on current settings_controller view snapshot.
+-- @param self table GUI script instance table.
+local function refresh_view(self)
+    if not self.ctrl then return end
+    local view = settings_controller.get_view_data(self.ctrl)
+
+    -- Toggle all modal nodes based on open state
+    local is_open = view.is_open
+    gui.set_enabled(self.settings_backdrop, is_open)
+    gui.set_enabled(self.settings_card, is_open)
+    gui.set_enabled(self.settings_title, is_open)
+    gui.set_enabled(self.btn_close, is_open)
+    gui.set_enabled(self.lbl_close, is_open)
+
+    gui.set_enabled(self.row_sfx, is_open)
+    gui.set_enabled(self.lbl_sfx, is_open)
+    gui.set_enabled(self.btn_toggle_sfx, is_open)
+    gui.set_enabled(self.txt_sfx_status, is_open)
+
+    gui.set_enabled(self.row_music, is_open)
+    gui.set_enabled(self.lbl_music, is_open)
+    gui.set_enabled(self.btn_toggle_music, is_open)
+    gui.set_enabled(self.txt_music_status, is_open)
+
+    gui.set_enabled(self.row_haptics, is_open)
+    gui.set_enabled(self.lbl_haptics, is_open)
+    gui.set_enabled(self.btn_toggle_haptics, is_open)
+    gui.set_enabled(self.txt_haptics_status, is_open)
+
+    gui.set_enabled(self.btn_reset, is_open)
+    gui.set_enabled(self.lbl_reset, is_open)
+    gui.set_enabled(self.txt_version, is_open)
+
+    if not is_open then
+        gui.set_enabled(self.btn_confirm_reset, false)
+        gui.set_enabled(self.lbl_confirm_reset, false)
+        return
+    end
+
+    -- SFX Status
+    gui.set_text(self.txt_sfx_status, view.sfx_enabled and "ON" or "OFF")
+    gui.set_color(self.txt_sfx_status, view.sfx_enabled and vmath.vector4(0.3, 0.9, 0.3, 1) or vmath.vector4(0.9, 0.3, 0.3, 1))
+
+    -- Music Status
+    gui.set_text(self.txt_music_status, view.music_enabled and "ON" or "OFF")
+    gui.set_color(self.txt_music_status, view.music_enabled and vmath.vector4(0.3, 0.9, 0.3, 1) or vmath.vector4(0.9, 0.3, 0.3, 1))
+
+    -- Haptics Status
+    gui.set_text(self.txt_haptics_status, view.haptics_enabled and "ON" or "OFF")
+    gui.set_color(self.txt_haptics_status, view.haptics_enabled and vmath.vector4(0.3, 0.9, 0.3, 1) or vmath.vector4(0.9, 0.3, 0.3, 1))
+
+    -- Version String
+    gui.set_text(self.txt_version, view.version_string)
+
+    -- Confirmation Row
+    local show_confirm = view.confirming_reset == true
+    gui.set_enabled(self.btn_confirm_reset, show_confirm)
+    gui.set_enabled(self.lbl_confirm_reset, show_confirm)
+end
+
+--- Initializes GUI nodes, input listener, and default settings controller.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    -- Modal & Card
+    self.settings_backdrop = gui.get_node("settings_backdrop")
+    self.settings_card = gui.get_node("settings_card")
+    self.settings_title = gui.get_node("settings_title")
+    self.btn_close = gui.get_node("btn_close")
+    self.lbl_close = gui.get_node("lbl_close")
+
+    -- Rows
+    self.row_sfx = gui.get_node("row_sfx")
+    self.lbl_sfx = gui.get_node("lbl_sfx")
+    self.btn_toggle_sfx = gui.get_node("btn_toggle_sfx")
+    self.txt_sfx_status = gui.get_node("txt_sfx_status")
+
+    self.row_music = gui.get_node("row_music")
+    self.lbl_music = gui.get_node("lbl_music")
+    self.btn_toggle_music = gui.get_node("btn_toggle_music")
+    self.txt_music_status = gui.get_node("txt_music_status")
+
+    self.row_haptics = gui.get_node("row_haptics")
+    self.lbl_haptics = gui.get_node("lbl_haptics")
+    self.btn_toggle_haptics = gui.get_node("btn_toggle_haptics")
+    self.txt_haptics_status = gui.get_node("txt_haptics_status")
+
+    self.btn_reset = gui.get_node("btn_reset")
+    self.lbl_reset = gui.get_node("lbl_reset")
+    self.btn_confirm_reset = gui.get_node("btn_confirm_reset")
+    self.lbl_confirm_reset = gui.get_node("lbl_confirm_reset")
+    self.txt_version = gui.get_node("txt_version")
+
+    self.save_data = save_manager.load()
+    self.ctrl = settings_controller.new(self.save_data)
+    refresh_view(self)
+end
+
+--- Handles dispatched messages for opening and closing settings.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("show_settings") then
+        -- Refresh save data in case state was modified
+        self.save_data = save_manager.load()
+        self.ctrl = settings_controller.new(self.save_data)
+        settings_controller.open(self.ctrl)
+        refresh_view(self)
+    elseif message_id == hash("hide_settings") then
+        if self.ctrl then
+            settings_controller.close(self.ctrl)
+            refresh_view(self)
+        end
+    end
+end
+
+--- Handles touch input across toggle buttons, data reset, and close.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Action event data {x, y, pressed, released}.
+-- @return boolean consumed True if touch event was processed.
+function on_input(self, action_id, action)
+    if not self.ctrl or not self.ctrl.is_open then
+        return false
+    end
+    if action_id ~= hash("touch") then
+        return false
+    end
+    -- Block all touch events while modal is open
+    if not action.pressed then
+        return true
+    end
+
+    if gui.pick_node(self.btn_close, action.x, action.y) then
+        settings_controller.close(self.ctrl)
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.btn_toggle_sfx, action.x, action.y) then
+        settings_controller.toggle_sfx(self.ctrl)
+        save_manager.save(self.save_data)
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.btn_toggle_music, action.x, action.y) then
+        settings_controller.toggle_music(self.ctrl)
+        save_manager.save(self.save_data)
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.btn_toggle_haptics, action.x, action.y) then
+        settings_controller.toggle_haptics(self.ctrl)
+        save_manager.save(self.save_data)
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.btn_reset, action.x, action.y) then
+        settings_controller.request_reset_progress(self.ctrl)
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.btn_confirm_reset, action.x, action.y) then
+        local ok = settings_controller.confirm_reset_progress(self.ctrl)
+        if ok then
+            save_manager.save(self.save_data)
+            settings_controller.close(self.ctrl)
+            refresh_view(self)
+            pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+        end
+        return true
+    end
+
+    return true
+end
+
+--- Releases input focus when finalized.
+-- @param self table GUI script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

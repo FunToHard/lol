@@ -38,6 +38,7 @@ function init(self)
     self.coin_text = gui.get_node("coin_text")
     self.btn_village = gui.get_node("btn_village")
     self.btn_play_next = gui.get_node("btn_play_next")
+    self.btn_settings = gui.get_node("btn_settings")
 
     self.lvl_btns = {
         gui.get_node("lvl_btn_1"),
@@ -78,7 +79,10 @@ end
 -- @return boolean consumed True if touch was consumed.
 function on_input(self, action_id, action)
     if action_id == hash("touch") and action.pressed then
-        if gui.pick_node(self.btn_village, action.x, action.y) then
+        if gui.pick_node(self.btn_settings, action.x, action.y) then
+            pcall(msg.post, "#settings_gui", "show_settings")
+            return true
+        elseif gui.pick_node(self.btn_village, action.x, action.y) then
             pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "village" })
             return true
         elseif gui.pick_node(self.btn_play_next, action.x, action.y) then

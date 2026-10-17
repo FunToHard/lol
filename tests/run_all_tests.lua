@@ -33,6 +33,7 @@ local test_suites = {
     "tests/test_services.lua",
     "tests/test_scene_switcher.lua",
     "tests/test_level_end.lua",
+    "tests/test_settings.lua",
     "tests/test_vertical_slice.lua"
 }
 
