@@ -181,6 +181,14 @@ end
 function on_message(self, message_id, message, sender)
     if message_id == hash("refresh_village_ui") then
         refresh_view(self)
+    elseif message_id == hash("update_companion") then
+        if message.dialogue then
+            self.companion.dialogue = message.dialogue
+        end
+        if message.state then
+            self.companion.current_emote = message.state
+        end
+        refresh_view(self)
     end
 end
 

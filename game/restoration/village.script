@@ -5,6 +5,22 @@ local save_manager = require("game.persistence.save_manager")
 local ledger = require("game.economy.ledger")
 local village_state = require("game.restoration.village_state")
 local companion = require("game.restoration.companion")
+local prop_layer_controller = require("game.restoration.prop_layer_controller")
+
+--- Refreshes the 2.5D visual diorama state and informs the village UI of companion emotes.
+-- @param self table Script instance table.
+local function refresh_props(self)
+    self.diorama = prop_layer_controller.get_diorama_snapshot(
+        self.save_data.village and self.save_data.village.completed_tasks or {},
+        self.save_data.village and self.save_data.village.chosen_styles or {},
+        self.companion
+    )
+    pcall(msg.post, "#village_ui", "update_companion", {
+        dialogue = self.diorama.companion.dialogue,
+        state = self.diorama.companion.state,
+        percent = self.diorama.completion_percent
+    })
+end
 
 --- Initializes the village script component, loads persistent save data, and mounts subsystems.
 -- @param self table Script instance table.
@@ -21,6 +37,7 @@ function init(self)
     })
     self.village = village_state.new(self.save_data.village, self.ledger)
     self.companion = companion.new("Pip")
+    refresh_props(self)
 end
 
 --- Updates companion emote timers and scene ambient states per frame.
@@ -47,12 +64,14 @@ function on_message(self, message_id, message, sender)
             self.save_data.village.chosen_styles = self.village.chosen_styles
             self.save_data.ledger_history = self.ledger.history
             save_manager.save(self.save_data)
+            refresh_props(self)
         end
     elseif message_id == hash("restyle_prop") then
         local ok = village_state.restyle_prop(self.village, message.task_id, message.style_idx)
         if ok then
             self.save_data.village.chosen_styles = self.village.chosen_styles
             save_manager.save(self.save_data)
+            refresh_props(self)
         end
     elseif message_id == hash("switch_to_map") then
         pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
