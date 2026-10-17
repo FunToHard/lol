@@ -25,28 +25,28 @@ prop_layer_controller.PROPS = {
         prop_id = "hearth",
         pos = { x = 360, y = 520, z = 0.1 },
         scale = { x = 1.4, y = 1.4, z = 1.0 },
-        sprite = "obstacle_stone_2"
+        sprite = "village_hearth"
     },
     {
         task_id = "light_first_lantern",
         prop_id = "lantern_1",
         pos = { x = 180, y = 780, z = 0.2 },
         scale = { x = 1.0, y = 1.0, z = 1.0 },
-        sprite = "powerup_lantern"
+        sprite = "village_lantern"
     },
     {
         task_id = "rebuild_wooden_benches",
         prop_id = "bench",
         pos = { x = 540, y = 460, z = 0.1 },
         scale = { x = 1.1, y = 0.9, z = 1.0 },
-        sprite = "hud_moves_capsule"
+        sprite = "village_bench"
     },
     {
         task_id = "restore_village_well",
         prop_id = "well",
         pos = { x = 200, y = 420, z = 0.1 },
         scale = { x = 1.3, y = 1.3, z = 1.0 },
-        sprite = "obstacle_stone_1"
+        sprite = "village_well"
     },
     {
         task_id = "plant_flower_beds",
@@ -81,7 +81,7 @@ prop_layer_controller.PROPS = {
         prop_id = "teahouse",
         pos = { x = 580, y = 700, z = 0.18 },
         scale = { x = 1.3, y = 1.3, z = 1.0 },
-        sprite = "obstacle_stone_2"
+        sprite = "village_teahouse"
     },
     {
         task_id = "place_tea_table_and_seats",
@@ -95,7 +95,7 @@ prop_layer_controller.PROPS = {
         prop_id = "bonfire",
         pos = { x = 360, y = 880, z = 0.3 },
         scale = { x = 1.5, y = 1.5, z = 1.0 },
-        sprite = "powerup_lantern"
+        sprite = "village_hearth"
     }
 }
 

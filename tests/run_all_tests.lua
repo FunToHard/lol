@@ -37,6 +37,8 @@ local test_suites = {
     "tests/test_settings.lua",
     "tests/test_shop_ui.lua",
     "tests/test_map_controller.lua",
+    "tests/test_dialogue.lua",
+    "tests/test_areas.lua",
     "tests/test_mobile_scaling.lua",
     "tests/test_vertical_slice.lua"
 }

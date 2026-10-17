@@ -19,3 +19,7 @@ save.json*
 assets/*
 !assets/levels/
 !assets/levels/**
+!assets/atlases/
+!assets/atlases/**
+!assets/sprites/
+!assets/sprites/**
