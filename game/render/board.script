@@ -553,12 +553,15 @@ function on_message(self, message_id, message, sender)
     elseif message_id == hash("resume_game") then
         self.is_paused = false
         self.save_data = save_manager.load()
+        if self.flow then
+            self.flow.save_data = self.save_data
+        end
         local settings = self.save_data.settings or {}
         if self.audio then
-            self.audio.is_muted = (settings.sfx_enabled == false)
+            audio_manager.set_muted(self.audio, settings.sfx_enabled == false)
         end
         if self.haptic then
-            self.haptic.enabled = (settings.haptics_enabled ~= false)
+            haptic.set_enabled(self.haptic, settings.haptics_enabled ~= false)
         end
     elseif message_id == hash("restart_level") then
         self.is_paused = false
@@ -593,6 +596,9 @@ function on_message(self, message_id, message, sender)
         end
     elseif message_id == hash("refresh_boosters") then
         self.save_data = save_manager.load()
+        if self.flow then
+            self.flow.save_data = self.save_data
+        end
         if self.boosters then
             self.boosters.quantities = self.save_data.player.inventory
             msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })

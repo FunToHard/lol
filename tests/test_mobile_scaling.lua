@@ -14,6 +14,9 @@ local total_tests = 0
 local passed_tests = 0
 
 --- Asserts equality between actual and expected values.
+-- @param actual any Evaluated test value.
+-- @param expected any Desired reference value.
+-- @param msg string Description of the assertion.
 local function assert_eq(actual, expected, msg)
     total_tests = total_tests + 1
     if actual ~= expected then
@@ -37,7 +40,22 @@ local board_top = board_bottom + (8 * board_view.CELL_PITCH - board_view.TILE_GA
 assert_eq(board_bottom >= 180, true, "Board bottom leaves >=180px safe margin for Booster Dock (bottom = " .. board_bottom .. ")")
 assert_eq(board_top <= 880, true, "Board top leaves >=400px safe margin for In-Game HUD (top = " .. board_top .. ")")
 
--- 2. Cell Screen Coordinates & Hit-Testing
+-- 2. Multi-Aspect Ratio Adaptations (Tall 19.5:9 Phone & 4:3 Tablet)
+-- Tall phone (e.g. 720x1560): center_y can shift up to 600px, expanding bottom booster margin
+local tall_origin_x, tall_origin_y = board_view.get_board_origin(8, 8, 600)
+local tall_bottom = tall_origin_y - (board_view.TILE_SIZE / 2)
+local tall_top = tall_bottom + (8 * board_view.CELL_PITCH - board_view.TILE_GAP)
+assert_eq(tall_bottom >= 260, true, "Tall phone leaves extra booster room (bottom = " .. tall_bottom .. ")")
+assert_eq(1560 - tall_top >= 500, true, "Tall phone leaves extensive HUD/notch room (top margin = " .. (1560 - tall_top) .. ")")
+
+-- Tablet (e.g. 720x960 4:3): center_y shifted slightly lower to 480px
+local tab_origin_x, tab_origin_y = board_view.get_board_origin(8, 8, 480)
+local tab_bottom = tab_origin_y - (board_view.TILE_SIZE / 2)
+local tab_top = tab_bottom + (8 * board_view.CELL_PITCH - board_view.TILE_GAP)
+assert_eq(tab_bottom >= 150, true, "Tablet leaves sufficient booster room (bottom = " .. tab_bottom .. ")")
+assert_eq(960 - tab_top >= 150, true, "Tablet leaves sufficient HUD room (top margin = " .. (960 - tab_top) .. ")")
+
+-- 3. Cell Screen Coordinates & Hit-Testing Across Multiple Aspect Ratios
 for gx = 1, 8 do
     for gy = 1, 8 do
         local px, py = board_view.grid_to_screen(gx, gy, 8, 8, 520)
@@ -68,6 +86,10 @@ assert_eq(haptic.impact(haptics_off), false, "Haptic impact suppressed when disa
 assert_eq(haptic.heavy(haptics_off), false, "Haptic heavy suppressed when disabled")
 assert_eq(#haptics_off.history, 0, "No haptic events recorded when disabled")
 
+-- Test dynamic set_enabled toggle
+haptic.set_enabled(haptics_off, true)
+assert_eq(haptic.tick(haptics_off), true, "Haptic tick fires after set_enabled(true)")
+
 -- 4. Audio Manager Mute State Integration
 local audio_active = audio_manager.new(false, false)
 local evt_sound = audio_manager.play(audio_active, "match", 1.0)
@@ -76,6 +98,11 @@ assert_eq(evt_sound.is_muted, false, "Sound plays unmuted when audio enabled")
 local audio_muted = audio_manager.new(true, false)
 local evt_muted = audio_manager.play(audio_muted, "match", 1.0)
 assert_eq(evt_muted.is_muted, true, "Sound muted when audio disabled")
+
+-- Test dynamic set_muted toggle
+audio_manager.set_muted(audio_muted, false)
+local evt_unmuted = audio_manager.play(audio_muted, "swap", 1.0)
+assert_eq(evt_unmuted.is_muted, false, "Sound plays unmuted after set_muted(false)")
 
 -- 5. Persistent Settings Toggle Roundtrip
 local save_data = save_manager.create_default_state()

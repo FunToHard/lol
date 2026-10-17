@@ -19,6 +19,13 @@ function audio_manager.new(is_muted, has_sound_components)
     }
 end
 
+--- Sets the mute flag for audio playback.
+-- @param state table Audio manager state instance.
+-- @param is_muted boolean True to mute SFX output, false to enable.
+function audio_manager.set_muted(state, is_muted)
+    state.is_muted = (is_muted == true)
+end
+
 --- Enables or disables dispatching to Defold sound components.
 -- @param state table Audio manager state instance.
 -- @param enabled boolean True to enable engine sound component dispatch, false to disable.
