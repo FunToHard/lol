@@ -75,6 +75,9 @@ function on_message(self, message_id, message, sender)
         end
     elseif message_id == hash("switch_to_map") then
         pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+    elseif message_id == hash("refresh_props") then
+        self.save_data = save_manager.load()
+        refresh_props(self)
     end
 end
 

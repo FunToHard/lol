@@ -243,6 +243,7 @@ function on_input(self, action_id, action)
                 self.save_data.ledger_history = self.ledger.history
                 save_manager.save(self.save_data)
                 refresh_view(self)
+                pcall(msg.post, "#village", "refresh_props")
             end
             return true
         elseif gui.pick_node(self.btn_cancel_picker, action.x, action.y) then

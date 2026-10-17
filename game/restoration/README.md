@@ -18,6 +18,12 @@ Manages the woodland village diorama, renovation task progression, 3-style custo
   * `new(name)`: Creates companion state instance (Pip the Owl / Bramble the Hedgehog).
   * `trigger_reaction(state, emote_type, duration)`: Plays emote (`"idle"`, `"curious"`, `"happy"`, `"celebrate"`) and sets dialogue line.
   * `update(state, dt)`: Updates emote timer and reverts automatically to idle.
+* `village_controller`:
+  * `new(state, companion, econ_ledger)`: Initializes decoupled view-model driving the renovation drawer and 3-style picker.
+  * `get_view_data(ctrl)`: Generates presentation snapshot for GUI binding.
+* `prop_layer_controller`:
+  * `get_prop_state(completed_tasks, chosen_styles, prop_def)`: Calculates 2.5D coordinates, restoration state, and style tinting for a prop.
+  * `get_diorama_snapshot(completed_tasks, chosen_styles, companion_state)`: Compiles full diorama snapshot for all restorative props and Pip companion.
 
 ## 3. Strict Inclusions
 * Area renovation task catalog and style metadata.

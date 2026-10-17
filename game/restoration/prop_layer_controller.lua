@@ -49,50 +49,50 @@ prop_layer_controller.PROPS = {
         sprite = "obstacle_stone_1"
     },
     {
-        task_id = "plant_flowerbeds",
-        prop_id = "flowerbeds",
+        task_id = "plant_flower_beds",
+        prop_id = "flower_beds",
         pos = { x = 360, y = 360, z = 0.08 },
         scale = { x = 1.0, y = 1.0, z = 1.0 },
         sprite = "ingredient_acorn"
     },
     {
-        task_id = "hang_fairy_lights",
-        prop_id = "fairy_lights",
-        pos = { x = 360, y = 720, z = 0.25 },
-        scale = { x = 1.2, y = 0.8, z = 1.0 },
-        sprite = "powerup_firefly"
-    },
-    {
-        task_id = "pave_stone_path",
-        prop_id = "stone_path",
+        task_id = "repair_courtyard_paving",
+        prop_id = "paving",
         pos = { x = 360, y = 440, z = 0.02 },
         scale = { x = 1.5, y = 1.5, z = 1.0 },
         sprite = "cell_slot"
     },
     {
-        task_id = "build_tea_table",
+        task_id = "construct_birdhouse",
+        prop_id = "birdhouse",
+        pos = { x = 160, y = 600, z = 0.15 },
+        scale = { x = 1.1, y = 1.1, z = 1.0 },
+        sprite = "obstacle_bramble_1"
+    },
+    {
+        task_id = "hang_garden_lights",
+        prop_id = "garden_lights",
+        pos = { x = 360, y = 720, z = 0.25 },
+        scale = { x = 1.2, y = 0.8, z = 1.0 },
+        sprite = "powerup_firefly"
+    },
+    {
+        task_id = "rebuild_teahouse_kiosk",
+        prop_id = "teahouse",
+        pos = { x = 580, y = 700, z = 0.18 },
+        scale = { x = 1.3, y = 1.3, z = 1.0 },
+        sprite = "obstacle_stone_2"
+    },
+    {
+        task_id = "place_tea_table_and_seats",
         prop_id = "tea_table",
         pos = { x = 480, y = 540, z = 0.12 },
         scale = { x = 1.0, y = 1.0, z = 1.0 },
         sprite = "hud_goal_capsule"
     },
     {
-        task_id = "plant_elder_bonsai",
-        prop_id = "bonsai",
-        pos = { x = 160, y = 600, z = 0.15 },
-        scale = { x = 1.1, y = 1.1, z = 1.0 },
-        sprite = "obstacle_bramble_1"
-    },
-    {
-        task_id = "carve_village_totem",
-        prop_id = "totem",
-        pos = { x = 580, y = 700, z = 0.18 },
-        scale = { x = 1.2, y = 1.2, z = 1.0 },
-        sprite = "obstacle_stone_2"
-    },
-    {
-        task_id = "light_grand_lantern",
-        prop_id = "grand_lantern",
+        task_id = "light_central_bonfire",
+        prop_id = "bonfire",
         pos = { x = 360, y = 880, z = 0.3 },
         scale = { x = 1.5, y = 1.5, z = 1.0 },
         sprite = "powerup_lantern"
@@ -123,7 +123,7 @@ function prop_layer_controller.get_prop_state(completed_tasks, chosen_styles, pr
     end
     if not style_idx then style_idx = 1 end
 
-    local tint = prop_layer_controller.STYLE_TINTS[style_idx] or prop_layer_controller.STYLE_TINTS[1]
+    local tint_def = prop_layer_controller.STYLE_TINTS[style_idx] or prop_layer_controller.STYLE_TINTS[1]
 
     return {
         task_id = prop_def.task_id,
@@ -131,9 +131,9 @@ function prop_layer_controller.get_prop_state(completed_tasks, chosen_styles, pr
         is_restored = is_restored,
         style_idx = style_idx,
         sprite_name = prop_def.sprite,
-        pos = prop_def.pos,
-        scale = prop_def.scale,
-        tint = tint
+        pos = { x = prop_def.pos.x, y = prop_def.pos.y, z = prop_def.pos.z },
+        scale = { x = prop_def.scale.x, y = prop_def.scale.y, z = prop_def.scale.z },
+        tint = { r = tint_def.r, g = tint_def.g, b = tint_def.b, a = tint_def.a, name = tint_def.name }
     }
 end
 

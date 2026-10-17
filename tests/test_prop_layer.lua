@@ -98,4 +98,24 @@ snapshot = prop_layer_controller.get_diorama_snapshot(completed_tasks, chosen_st
 assert_eq(snapshot.restored_count, 12, "All 12 props are restored")
 assert_eq(snapshot.completion_percent, 100, "Courtyard reaches 100% completion")
 
+-- 6. Canonical Task Catalog 1:1 Cross-Validation
+local task_catalog = require("game.restoration.task_catalog")
+local catalog_tasks = task_catalog.get_tasks_for_area(task_catalog.AREA_1_ID)
+assert_eq(#catalog_tasks, 12, "Task catalog contains 12 tasks for Area 1")
+
+local prop_task_ids = {}
+for _, p in ipairs(prop_layer_controller.PROPS) do
+    prop_task_ids[p.task_id] = true
+end
+
+for _, task in ipairs(catalog_tasks) do
+    assert_eq(prop_task_ids[task.id], true, "Prop exists for catalog task: " .. task.id)
+end
+
+-- 7. Nil Input Resilience
+local nil_snapshot = prop_layer_controller.get_diorama_snapshot(nil, nil, nil)
+assert_eq(nil_snapshot.total_props, 12, "Nil snapshot maintains total props count")
+assert_eq(nil_snapshot.restored_count, 0, "Nil snapshot has 0 restored props")
+assert_eq(nil_snapshot.companion.state, "idle", "Nil snapshot companion is idle")
+
 print(string.format("All tests passed! (%d/%d assertions)\n", passed_tests, total_tests))

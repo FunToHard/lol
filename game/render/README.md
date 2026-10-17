@@ -11,6 +11,10 @@ External callers and engine bootstrap interact exclusively with:
 * `audio_manager`: Pentatonic scale cascade pitching (C4 → D4 → E4 → G4 → A4 → C5) and sound dispatch.
 * `haptic`: Tactile feedback for tile swaps (tick), matches (impact), and detonations (heavy).
 * `effects`: Deterministic tween configurations, 80ms squash & stretch, quadratic Bezier arcs for Fireflies, and Rocket trajectories.
+* `hud_controller`: Decoupled view-model managing moves remaining, goal counters, and pause modal.
+* `booster_controller`: Tactical booster inventory selection, cooldowns, and board targeting.
+* `level_end_controller`: Victory fanfare, 1-3 star ratings, coin/star spark rewards, and out-of-moves continuation options.
+* `map_controller`: Sinusoidal 25-level map path geometry, boundary-enforced scroll clamping, and star badges.
 * `board.script` / `board.go`: Defold lifecycle orchestrator synchronizing visual game objects with `game/board` simulation.
 
 ## 3. Strict Inclusions
