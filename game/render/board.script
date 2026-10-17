@@ -16,6 +16,11 @@ local haptic = require("game.render.haptic")
 local level_loader = require("game.board.level_loader")
 local level_tracker = require("game.board.level_tracker")
 local effects = require("game.render.effects")
+local save_manager = require("game.persistence.save_manager")
+local ledger = require("game.economy.ledger")
+local level_flow = require("game.services.level_flow")
+local ads_service = require("game.services.ads_service")
+local mock_ads_adapter = require("game.services.mock_ads_adapter")
 
 local ALLOWED_COLORS = { "amber", "amethyst", "emerald", "ruby", "sapphire" }
 
@@ -69,6 +74,11 @@ local function restart_level(self)
     end
 
     msg.post("#hud", "init_hud", { level_def = self.level_def })
+    self.level_completed = false
+    self.is_paused = false
+    if self.ledger and self.ads and self.save_data then
+        self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def and self.level_def.level_id or 1)
+    end
 
     for gy = 1, self.height do
         for gx = 1, self.width do
@@ -100,6 +110,20 @@ function init(self)
     self.cell_objects = {}
     self.is_resolving = false
     self.is_paused = false
+    self.level_completed = false
+
+    -- Initialize persistent save data, economy ledger, and level flow
+    self.save_data = save_manager.load()
+    local player = self.save_data.player or {}
+    self.ledger = ledger.new({
+        balances = {
+            coins = player.coins or 100,
+            stars = player.stars or 0,
+            boosters = player.inventory or { hammer = 1, rocket = 1, bomb = 1 }
+        },
+        history = self.save_data.ledger_history or {}
+    })
+    self.ads = ads_service.new(mock_ads_adapter.new(true))
 
     -- Load Level 1 definition or fallback to standard 8x8 configuration
     local ok, def = pcall(level_loader.load_from_file, "assets/levels/level_001.json")
@@ -125,6 +149,8 @@ function init(self)
         reshuffle.execute(self.board, self.rng)
         self.tracker = level_tracker.new(self.level_def)
     end
+
+    self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def.level_id)
 
     -- Initialize HUD overlay with active level targets
     msg.post("#hud", "init_hud", { level_def = self.level_def })
@@ -188,6 +214,26 @@ local function resolve_cascade_wave(self, wave)
             end
         end
         self.is_resolving = false
+        if self.tracker and not self.level_completed then
+            local status = level_tracker.get_status(self.tracker)
+            if status == "WON" then
+                self.level_completed = true
+                self.is_paused = true
+                msg.post("#level_end", "show_victory", {
+                    level_id = self.level_def and self.level_def.level_id or 1,
+                    tracker = self.tracker,
+                    flow = self.flow
+                })
+            elseif status == "LOST" then
+                self.level_completed = true
+                self.is_paused = true
+                msg.post("#level_end", "show_defeat", {
+                    level_id = self.level_def and self.level_def.level_id or 1,
+                    tracker = self.tracker,
+                    flow = self.flow
+                })
+            end
+        end
         return
     end
 
@@ -434,6 +480,12 @@ function on_message(self, message_id, message, sender)
             self.width = def.grid.width or 8
             self.height = def.grid.height or 8
             restart_level(self)
+        end
+    elseif message_id == hash("resume_after_continuation") then
+        self.level_completed = false
+        self.is_paused = false
+        if message.moves then
+            msg.post("#hud", "update_moves", { moves = message.moves })
         end
     end
 end

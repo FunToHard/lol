@@ -1,0 +1,210 @@
+--- GUI script driving the Victory Fanfare and Out-of-Moves continuation dialogs.
+-- Interacts with level_end_controller to grant rewards, deduct continuation coins, and trigger transitions.
+
+local level_end_controller = require("game.render.level_end_controller")
+
+--- Shows or hides victory-specific GUI nodes.
+-- @param self table GUI script instance table.
+-- @param is_visible boolean True to display victory nodes, false to hide.
+local function set_victory_visible(self, is_visible)
+    local v = is_visible == true
+    gui.set_enabled(self.vic_title, v)
+    gui.set_enabled(self.star_1, v)
+    gui.set_enabled(self.star_2, v)
+    gui.set_enabled(self.star_3, v)
+    gui.set_enabled(self.rew_sparks_bg, v)
+    gui.set_enabled(self.rew_sparks_icon, v)
+    gui.set_enabled(self.rew_sparks_txt, v)
+    gui.set_enabled(self.rew_coins_bg, v)
+    gui.set_enabled(self.rew_coins_icon, v)
+    gui.set_enabled(self.rew_coins_txt, v)
+    gui.set_enabled(self.btn_next_level, v)
+    gui.set_enabled(self.lbl_next_level, v)
+    gui.set_enabled(self.btn_to_village, v)
+    gui.set_enabled(self.lbl_to_village, v)
+    gui.set_enabled(self.btn_vic_map, v)
+    gui.set_enabled(self.lbl_vic_map, v)
+end
+
+--- Shows or hides defeat-specific GUI nodes.
+-- @param self table GUI script instance table.
+-- @param is_visible boolean True to display defeat nodes, false to hide.
+local function set_defeat_visible(self, is_visible)
+    local v = is_visible == true
+    gui.set_enabled(self.def_title, v)
+    gui.set_enabled(self.def_subtitle, v)
+    gui.set_enabled(self.btn_buy_moves, v)
+    gui.set_enabled(self.lbl_buy_moves, v)
+    gui.set_enabled(self.btn_watch_ad, v)
+    gui.set_enabled(self.lbl_watch_ad, v)
+    gui.set_enabled(self.btn_give_up, v)
+    gui.set_enabled(self.lbl_give_up, v)
+end
+
+--- Sets modal visibility and refreshes view data.
+-- @param self table GUI script instance table.
+local function refresh_modal_view(self)
+    if not self.ctrl or not self.ctrl.is_visible then
+        gui.set_enabled(self.backdrop, false)
+        gui.set_enabled(self.card, false)
+        set_victory_visible(self, false)
+        set_defeat_visible(self, false)
+        return
+    end
+
+    gui.set_enabled(self.backdrop, true)
+    gui.set_enabled(self.card, true)
+
+    local view = level_end_controller.get_view_data(self.ctrl)
+    if view.mode == "VICTORY" then
+        set_victory_visible(self, true)
+        set_defeat_visible(self, false)
+
+        -- Star rating display
+        local stars = view.stars_awarded
+        gui.set_color(self.star_1, stars >= 1 and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.3, 0.3, 0.3, 0.5))
+        gui.set_color(self.star_2, stars >= 2 and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.3, 0.3, 0.3, 0.5))
+        gui.set_color(self.star_3, stars >= 3 and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.3, 0.3, 0.3, 0.5))
+
+        -- Small punch animation on central star
+        gui.animate(self.star_2, gui.PROP_SCALE, vmath.vector3(1.2, 1.2, 1.0), gui.EASING_OUTQUAD, 0.15, 0, function()
+            gui.animate(self.star_2, gui.PROP_SCALE, vmath.vector3(1.0, 1.0, 1.0), gui.EASING_INQUAD, 0.1)
+        end)
+    elseif view.mode == "DEFEAT" then
+        set_victory_visible(self, false)
+        set_defeat_visible(self, true)
+
+        -- Dim buy moves button if insufficient coins
+        if view.can_afford_coins then
+            gui.set_color(self.btn_buy_moves, vmath.vector4(1, 1, 1, 1))
+        else
+            gui.set_color(self.btn_buy_moves, vmath.vector4(0.5, 0.5, 0.5, 0.6))
+        end
+    end
+end
+
+--- Initializes GUI nodes and default hidden modal state.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    self.backdrop = gui.get_node("backdrop")
+    self.card = gui.get_node("card")
+
+    -- Victory nodes
+    self.vic_title = gui.get_node("vic_title")
+    self.star_1 = gui.get_node("star_1")
+    self.star_2 = gui.get_node("star_2")
+    self.star_3 = gui.get_node("star_3")
+    self.rew_sparks_bg = gui.get_node("rew_sparks_bg")
+    self.rew_sparks_icon = gui.get_node("rew_sparks_icon")
+    self.rew_sparks_txt = gui.get_node("rew_sparks_txt")
+    self.rew_coins_bg = gui.get_node("rew_coins_bg")
+    self.rew_coins_icon = gui.get_node("rew_coins_icon")
+    self.rew_coins_txt = gui.get_node("rew_coins_txt")
+    self.btn_next_level = gui.get_node("btn_next_level")
+    self.lbl_next_level = gui.get_node("lbl_next_level")
+    self.btn_to_village = gui.get_node("btn_to_village")
+    self.lbl_to_village = gui.get_node("lbl_to_village")
+    self.btn_vic_map = gui.get_node("btn_vic_map")
+    self.lbl_vic_map = gui.get_node("lbl_vic_map")
+
+    -- Defeat nodes
+    self.def_title = gui.get_node("def_title")
+    self.def_subtitle = gui.get_node("def_subtitle")
+    self.btn_buy_moves = gui.get_node("btn_buy_moves")
+    self.lbl_buy_moves = gui.get_node("lbl_buy_moves")
+    self.btn_watch_ad = gui.get_node("btn_watch_ad")
+    self.lbl_watch_ad = gui.get_node("lbl_watch_ad")
+    self.btn_give_up = gui.get_node("btn_give_up")
+    self.lbl_give_up = gui.get_node("lbl_give_up")
+
+    self.ctrl = nil
+    self.next_level = 2
+    refresh_modal_view(self)
+end
+
+--- Handles dispatched messages for showing victory or defeat popups.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("show_victory") then
+        self.ctrl = level_end_controller.new(message.level_id or 1, message.tracker, message.flow)
+        level_end_controller.show_victory(self.ctrl)
+        local reward = level_end_controller.claim_victory(self.ctrl)
+        if reward then
+            self.next_level = reward.next_level or (message.level_id + 1)
+        end
+        refresh_modal_view(self)
+    elseif message_id == hash("show_defeat") then
+        self.ctrl = level_end_controller.new(message.level_id or 1, message.tracker, message.flow)
+        level_end_controller.show_defeat(self.ctrl)
+        refresh_modal_view(self)
+    elseif message_id == hash("hide_modal") then
+        if self.ctrl then self.ctrl.is_visible = false end
+        refresh_modal_view(self)
+    end
+end
+
+--- Handles touch input on level end modal buttons.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Action event data {x, y, pressed, released}.
+-- @return boolean consumed True if touch event was processed.
+function on_input(self, action_id, action)
+    if not self.ctrl or not self.ctrl.is_visible then return false end
+
+    if action_id == hash("touch") and action.pressed then
+        if self.ctrl.mode == "VICTORY" then
+            if gui.pick_node(self.btn_next_level, action.x, action.y) then
+                self.ctrl.is_visible = false
+                refresh_modal_view(self)
+                pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "puzzle", level_id = self.next_level })
+                return true
+            elseif gui.pick_node(self.btn_to_village, action.x, action.y) then
+                self.ctrl.is_visible = false
+                refresh_modal_view(self)
+                pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "village" })
+                return true
+            elseif gui.pick_node(self.btn_vic_map, action.x, action.y) then
+                self.ctrl.is_visible = false
+                refresh_modal_view(self)
+                pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+                return true
+            end
+            return true
+        elseif self.ctrl.mode == "DEFEAT" then
+            if gui.pick_node(self.btn_buy_moves, action.x, action.y) then
+                local ok, err = level_end_controller.buy_coin_continuation(self.ctrl)
+                if ok then
+                    refresh_modal_view(self)
+                    msg.post("#board", "resume_after_continuation", { moves = self.ctrl.tracker.moves_remaining })
+                end
+                return true
+            elseif gui.pick_node(self.btn_watch_ad, action.x, action.y) then
+                level_end_controller.watch_ad_continuation(self.ctrl, function(ok, err)
+                    if ok then
+                        refresh_modal_view(self)
+                        msg.post("#board", "resume_after_continuation", { moves = self.ctrl.tracker.moves_remaining })
+                    end
+                end)
+                return true
+            elseif gui.pick_node(self.btn_give_up, action.x, action.y) then
+                self.ctrl.is_visible = false
+                refresh_modal_view(self)
+                pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+                return true
+            end
+            return true
+        end
+    end
+    return true
+end
+
+--- Releases input focus when finalized.
+-- @param self table GUI script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end
