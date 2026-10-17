@@ -109,16 +109,18 @@ function init(self)
     self.rng = prng.new(os.time and os.time() or 12345)
     self.input = input_controller.new()
     self.shake = camera_shake.new()
-    self.audio = audio_manager.new(false, false)
-    self.haptic = haptic.new(true)
     self.tile_objects = {}
     self.cell_objects = {}
     self.is_resolving = false
     self.is_paused = false
     self.level_completed = false
 
-    -- Initialize persistent save data, economy ledger, and level flow
+    -- Initialize persistent save data, economy ledger, and settings preferences
     self.save_data = save_manager.load()
+    local settings = self.save_data.settings or {}
+    self.audio = audio_manager.new(settings.sfx_enabled == false, false)
+    self.haptic = haptic.new(settings.haptics_enabled ~= false)
+
     local player = self.save_data.player or {}
     self.ledger = ledger.new({
         balances = {
@@ -550,6 +552,14 @@ function on_message(self, message_id, message, sender)
         self.is_paused = true
     elseif message_id == hash("resume_game") then
         self.is_paused = false
+        self.save_data = save_manager.load()
+        local settings = self.save_data.settings or {}
+        if self.audio then
+            self.audio.is_muted = (settings.sfx_enabled == false)
+        end
+        if self.haptic then
+            self.haptic.enabled = (settings.haptics_enabled ~= false)
+        end
     elseif message_id == hash("restart_level") then
         self.is_paused = false
         restart_level(self)
