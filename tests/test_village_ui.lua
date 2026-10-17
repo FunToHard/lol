@@ -37,6 +37,9 @@ local ctrl = village_controller.new(vstate, comp, econ)
 
 local initial_view = village_controller.get_view_data(ctrl)
 assert_eq(initial_view.stars, 0, "Initial stars balance is 0")
+assert_eq(initial_view.area_completed, 0, "Initial completed tasks is 0")
+assert_eq(initial_view.area_total, 12, "Area 1 total tasks is 12")
+assert_eq(initial_view.area_percent, 0, "Initial completion is 0%")
 assert_true(initial_view.drawer_open, "Drawer starts open by default")
 assert_false(initial_view.picker_open, "Picker starts closed")
 assert_eq(initial_view.companion_emote, "idle", "Companion starts in idle emote")
@@ -80,6 +83,8 @@ assert_eq(comp.current_emote, "celebrate", "Companion celebrates after task comp
 
 -- Active task advances to task 2
 local view_after_1 = village_controller.get_view_data(ctrl)
+assert_eq(view_after_1.area_completed, 1, "Area completed count advances to 1")
+assert_eq(view_after_1.area_percent, 8, "Area completion percentage advances to 8%")
 assert_eq(view_after_1.active_task.id, "repair_stone_hearth", "Sequence advanced to repair_stone_hearth")
 assert_true(view_after_1.active_task.can_afford, "Can afford task 2 with remaining 2 stars")
 

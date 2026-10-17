@@ -14,12 +14,16 @@ local function refresh_view(self)
     local view = village_controller.get_view_data(self.ctrl)
 
     -- Currency & Area Progress
-    gui.set_text(self.txt_stars, tostring(view.stars))
-    gui.set_text(self.txt_coins, tostring(view.coins))
-    gui.set_text(self.area_title, string.format("Hearthstone Courtyard (%d/%d)", view.area_completed, view.area_total))
+    gui.set_text(self.txt_stars, tostring(view.stars or 0))
+    gui.set_text(self.txt_coins, tostring(view.coins or 0))
+    local completed = view.area_completed or 0
+    local total = view.area_total or 0
+    gui.set_text(self.area_title, string.format("Hearthstone Courtyard (%d/%d)", completed, total))
 
     -- Companion Speech Bubble
-    local comp_text = string.format("%s: %s", view.companion_name, view.companion_dialogue)
+    local c_name = view.companion_name or "Pip"
+    local c_dialogue = view.companion_dialogue or "Welcome to Hearthstone Courtyard!"
+    local comp_text = string.format("%s: %s", c_name, c_dialogue)
     gui.set_text(self.companion_txt, comp_text)
 
     -- Active Task Drawer

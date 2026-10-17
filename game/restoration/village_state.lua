@@ -151,7 +151,10 @@ function village_state.get_completion_stats(state)
     return {
         completed_count = count,
         total_count = total,
-        percent_complete = pct
+        percent_complete = pct,
+        completed = count,
+        total = total,
+        percent = pct
     }
 end
 
