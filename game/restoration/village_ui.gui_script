@@ -6,6 +6,7 @@ local save_manager = require("game.persistence.save_manager")
 local ledger = require("game.economy.ledger")
 local village_state = require("game.restoration.village_state")
 local companion = require("game.restoration.companion")
+local prop_layer_controller = require("game.restoration.prop_layer_controller")
 
 --- Updates all visual GUI nodes based on current village_controller view snapshot.
 -- @param self table GUI script instance table.
@@ -103,6 +104,40 @@ local function refresh_view(self)
         gui.set_enabled(self.style_2_check, false)
         gui.set_enabled(self.style_3_check, false)
     end
+
+    -- 2.5D Diorama Restorative Props & Companion
+    if self.prop_nodes and self.village then
+        local snapshot = prop_layer_controller.get_diorama_snapshot(
+            self.village.completed_tasks or {},
+            self.village.chosen_styles or {},
+            self.companion
+        )
+        for _, p in ipairs(snapshot.props) do
+            local entry = self.prop_nodes[p.prop_id]
+            if entry and entry.node then
+                if p.is_restored then
+                    gui.set_color(entry.node, vmath.vector4(p.tint.r, p.tint.g, p.tint.b, 1.0))
+                    gui.set_scale(entry.node, vmath.vector3(p.scale.x, p.scale.y, 1.0))
+                else
+                    gui.set_color(entry.node, vmath.vector4(0.35, 0.42, 0.38, 0.4))
+                    gui.set_scale(entry.node, vmath.vector3(p.scale.x * 0.85, p.scale.y * 0.85, 1.0))
+                end
+            end
+        end
+        if self.companion_diorama then
+            local emote = self.companion and self.companion.current_emote or "idle"
+            if emote == "celebrate" then
+                gui.set_scale(self.companion_diorama, vmath.vector3(1.25, 1.25, 1.0))
+                gui.set_color(self.companion_diorama, vmath.vector4(1.0, 1.0, 0.7, 1.0))
+            elseif emote == "curious" then
+                gui.set_scale(self.companion_diorama, vmath.vector3(1.1, 1.1, 1.0))
+                gui.set_color(self.companion_diorama, vmath.vector4(0.8, 1.0, 0.9, 1.0))
+            else
+                gui.set_scale(self.companion_diorama, vmath.vector3(1.0, 1.0, 1.0))
+                gui.set_color(self.companion_diorama, vmath.vector4(1.0, 0.88, 0.65, 1.0))
+            end
+        end
+    end
 end
 
 --- Initializes GUI nodes, input focus, and restores persistent state.
@@ -117,6 +152,20 @@ function init(self)
     self.txt_stars = gui.get_node("txt_stars")
     self.txt_coins = gui.get_node("txt_coins")
     self.area_title = gui.get_node("area_title")
+
+    -- 2.5D Diorama Canvas & Props
+    pcall(function()
+        self.village_bg = gui.get_node("village_bg")
+        self.courtyard_clearing = gui.get_node("courtyard_clearing")
+        self.companion_diorama = gui.get_node("companion_diorama")
+    end)
+    self.prop_nodes = {}
+    for _, prop_def in ipairs(prop_layer_controller.PROPS) do
+        local ok, node = pcall(gui.get_node, "prop_" .. prop_def.prop_id)
+        if ok and node then
+            self.prop_nodes[prop_def.prop_id] = { node = node, def = prop_def }
+        end
+    end
 
     -- Companion speech bubble
     self.companion_bubble = gui.get_node("companion_bubble")
@@ -279,6 +328,33 @@ function on_input(self, action_id, action)
             refresh_view(self)
         end
         return true
+    end
+
+    -- 5. Interactive Diorama Prop Taps (Re-style or Restore)
+    if self.prop_nodes and self.ctrl and not self.ctrl.picker_open then
+        for _, entry in pairs(self.prop_nodes) do
+            if gui.pick_node(entry.node, action.x, action.y) then
+                local is_done = village_state.is_task_completed(self.village, entry.def.task_id)
+                if is_done then
+                    village_controller.open_picker(self.ctrl, entry.def.task_id, "RESTYLE")
+                    refresh_view(self)
+                    return true
+                else
+                    local active = village_state.get_active_task(self.village)
+                    if active and active.id == entry.def.task_id then
+                        if village_state.can_complete_task(self.village, active.id) then
+                            village_controller.open_picker(self.ctrl, active.id, "RESTORE")
+                        else
+                            if not self.ctrl.drawer_open then
+                                village_controller.toggle_drawer(self.ctrl)
+                            end
+                        end
+                        refresh_view(self)
+                        return true
+                    end
+                end
+            end
+        end
     end
 
     return false
