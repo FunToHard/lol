@@ -63,12 +63,12 @@
 ---
 
 ## Phase 5: Decoupled Services & Vertical Slice Polish
-- [ ] Create abstract `IAdsService` and `IIAPService` contracts.
-- [ ] Implement `MockAdsAdapter` (simulated 1.5s rewarded ad overlay with instant reward callback).
-- [ ] Implement `MockIAPAdapter` (simulated purchase dialog for Coin Packs & Starter Bundle).
-- [ ] Build In-Game Shop GUI (Starter Pack, 3 Coin Packs, Booster refills).
-- [ ] Build Level-End flows (Victory fanfare + Star grant, Out of Moves prompt: +5 moves for 900 coins or 1 rewarded ad).
-- [ ] Conduct external playtesting of the 25-level vertical slice (validate loop: Play Level → Earn Star → Restore Village).
+- [x] Create abstract `IAdsService` and `IIAPService` contracts.
+- [x] Implement `MockAdsAdapter` (simulated 1.5s rewarded ad overlay with instant reward callback).
+- [x] Implement `MockIAPAdapter` (simulated purchase dialog for Coin Packs & Starter Bundle).
+- [x] Build In-Game Shop GUI (Starter Pack, 3 Coin Packs, Booster refills).
+- [x] Build Level-End flows (Victory fanfare + Star grant, Out of Moves prompt: +5 moves for 900 coins or 1 rewarded ad).
+- [x] Conduct external playtesting of the 25-level vertical slice (validate loop: Play Level → Earn Star → Restore Village).
 
 ---
 

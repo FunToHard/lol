@@ -26,7 +26,9 @@ local test_suites = {
     "tests/test_level_editor.lua",
     "tests/test_economy.lua",
     "tests/test_persistence.lua",
-    "tests/test_village.lua"
+    "tests/test_village.lua",
+    "tests/test_services.lua",
+    "tests/test_vertical_slice.lua"
 }
 
 local start_time = os.clock()
