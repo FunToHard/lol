@@ -29,8 +29,9 @@ end
 -- @param tile_id hash Defold game object ID of the tile.
 -- @param cell_data table Board cell table containing tile, powerup, and obstacle states.
 local function update_tile_sprite(tile_id, cell_data)
+    if not tile_id or not cell_data then return end
     local sprite_name = board_view.get_sprite_name(cell_data.tile_type, cell_data.powerup_type, cell_data.obstacle)
-    if sprite_name and tile_id then
+    if sprite_name then
         sprite.play_flipbook(msg.url(nil, tile_id, "sprite"), sprite_name)
     end
 end
@@ -57,7 +58,7 @@ function init(self)
     self.board = grid.create(self.width, self.height)
     self.input = input_controller.new()
     self.shake = camera_shake.new()
-    self.audio = audio_manager.new(false)
+    self.audio = audio_manager.new(false, false)
     self.haptic = haptic.new(true)
     self.tile_objects = {}
     self.cell_objects = {}
@@ -75,14 +76,18 @@ function init(self)
 
             -- Recessed cell slot
             local bg_id = factory.create("#cell_factory", vmath.vector3(px, py, -0.1))
-            self.cell_objects[k] = bg_id
+            if bg_id then
+                self.cell_objects[k] = bg_id
+            end
 
             -- Piece game object
             local cell_data = grid.get(self.board, gx, gy)
             if cell_data and (cell_data.tile_type or cell_data.powerup_type) then
                 local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
-                self.tile_objects[k] = tile_id
-                update_tile_sprite(tile_id, cell_data)
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                    update_tile_sprite(tile_id, cell_data)
+                end
             end
         end
     end
@@ -163,9 +168,11 @@ local function resolve_cascade_wave(self, wave)
             if not tile_id then
                 local px, py = board_view.grid_to_screen(sp.pos.x, sp.pos.y, self.width, self.height)
                 tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
-                self.tile_objects[k] = tile_id
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                end
             end
-            if c then update_tile_sprite(tile_id, c) end
+            if tile_id and c then update_tile_sprite(tile_id, c) end
         end
     end
 
@@ -193,13 +200,15 @@ local function resolve_cascade_wave(self, wave)
         local target_x, target_y = board_view.grid_to_screen(rx, ry, self.width, self.height)
         local spawn_y = target_y + 100
         local tile_id = factory.create("#tile_factory", vmath.vector3(target_x, spawn_y, 0.0))
-        self.tile_objects[k] = tile_id
-        local c = grid.get(self.board, rx, ry)
-        if c then update_tile_sprite(tile_id, c) end
+        if tile_id then
+            self.tile_objects[k] = tile_id
+            local c = grid.get(self.board, rx, ry)
+            if c then update_tile_sprite(tile_id, c) end
 
-        go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.18, 0, function()
-            apply_squash_and_stretch(tile_id)
-        end)
+            go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.18, 0, function()
+                apply_squash_and_stretch(tile_id)
+            end)
+        end
     end
 
     -- Chain next cascade wave after animation delay

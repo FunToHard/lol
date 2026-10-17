@@ -25,3 +25,9 @@ game_binding = /input/game.input_bindingc
 [project]
 title = Lantern Grove
 custom_resources = assets/levels
+
+[sprite]
+max_count = 1024
+
+[collection]
+max_instances = 1024

@@ -7,14 +7,23 @@ local PENTATONIC_SCALE = {0, 2, 4, 7, 9, 12}
 
 --- Creates a new audio manager state table.
 -- @param is_muted boolean Optional mute flag (default false).
+-- @param has_sound_components boolean|nil Optional flag indicating whether sound components exist (default false).
 -- @return table state The initialized audio state table.
-function audio_manager.new(is_muted)
+function audio_manager.new(is_muted, has_sound_components)
     return {
         is_muted = is_muted == true,
+        has_sound_components = has_sound_components == true,
         last_played = nil,
         last_pitch = 1.0,
         event_log = {}
     }
+end
+
+--- Enables or disables dispatching to Defold sound components.
+-- @param state table Audio manager state instance.
+-- @param enabled boolean True to enable engine sound component dispatch, false to disable.
+function audio_manager.set_sound_components_enabled(state, enabled)
+    state.has_sound_components = enabled == true
 end
 
 --- Computes the playback pitch multiplier for a cascade wave along the pentatonic scale.
@@ -28,7 +37,7 @@ function audio_manager.get_cascade_pitch(wave_number)
 end
 
 --- Dispatches a sound event with specified pitch.
--- In Defold runtime, dispatches to `sound.play()`; in headless/test mode, logs event.
+-- In Defold runtime, dispatches to `sound.play()` if sound components are enabled; in headless/test mode, logs event.
 -- @param state table Audio manager state instance.
 -- @param sound_name string Sound token ('match', 'swap', 'rocket', 'bomb', 'victory').
 -- @param pitch number|nil Pitch multiplier (default 1.0).
@@ -45,8 +54,8 @@ function audio_manager.play(state, sound_name, pitch)
     state.last_pitch = p
     table.insert(state.event_log, event)
 
-    -- In active Defold engine runtime, invoke sound message if sound component exists
-    if not state.is_muted and _G.sound and _G.sound.play then
+    -- In active Defold engine runtime, invoke sound message only if sound components are explicitly enabled
+    if not state.is_muted and state.has_sound_components and _G.sound and _G.sound.play then
         pcall(_G.sound.play, "#sound_" .. sound_name, {speed = p})
     end
 
