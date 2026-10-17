@@ -21,6 +21,7 @@ local ledger = require("game.economy.ledger")
 local level_flow = require("game.services.level_flow")
 local ads_service = require("game.services.ads_service")
 local mock_ads_adapter = require("game.services.mock_ads_adapter")
+local booster_controller = require("game.render.booster_controller")
 
 local ALLOWED_COLORS = { "amber", "amethyst", "emerald", "ruby", "sapphire" }
 
@@ -78,6 +79,10 @@ local function restart_level(self)
     self.is_paused = false
     if self.ledger and self.ads and self.save_data then
         self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def and self.level_def.level_id or 1)
+    end
+    if self.boosters then
+        booster_controller.cancel_selection(self.boosters)
+        msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
     end
 
     for gy = 1, self.height do
@@ -151,9 +156,11 @@ function init(self)
     end
 
     self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def.level_id)
+    self.boosters = booster_controller.new(self.ledger)
 
-    -- Initialize HUD overlay with active level targets
+    -- Initialize HUD overlay with active level targets and booster inventory
     msg.post("#hud", "init_hud", { level_def = self.level_def })
+    msg.post("#hud", "init_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
 
     -- Spawn recessed background cells and interactive pieces
     for gy = 1, self.height do
@@ -427,6 +434,58 @@ function on_input(self, action_id, action)
     if action_id ~= hash("touch") then return false end
     if self.is_paused or self.is_resolving then return true end
 
+    -- Active tactical booster targeting
+    if self.boosters and self.boosters.active_booster then
+        if action.pressed then
+            local gx, gy = board_view.screen_to_grid(action.x, action.y, self.width, self.height)
+            if gx and gy and booster_controller.can_use_on_cell(self.boosters, self.board, gx, gy) then
+                local b_type = self.boosters.active_booster
+                local ok, res = booster_controller.apply_to_cell(self.boosters, self.board, gx, gy)
+                if ok then
+                    self.save_data.player.inventory = self.ledger.balances.boosters
+                    self.save_data.ledger_history = self.ledger.history
+                    save_manager.save(self.save_data)
+
+                    if b_type == "bomb" then
+                        camera_shake.trigger(self.shake, 4.0)
+                        haptic.heavy(self.haptic)
+                    elseif b_type == "rocket" then
+                        camera_shake.trigger(self.shake, 3.0)
+                        haptic.heavy(self.haptic)
+                    else
+                        camera_shake.trigger(self.shake, 2.0)
+                        haptic.impact(self.haptic)
+                    end
+
+                    for _, pos in ipairs(res.cells) do
+                        local k = cell_key(pos.x, pos.y)
+                        local tid = self.tile_objects[k]
+                        if tid then
+                            go.animate(tid, "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1.3, 1.3, 1.0), go.EASING_OUTQUAD, 0.12)
+                            go.animate(msg.url(nil, tid, "sprite"), "tint.w", go.PLAYBACK_ONCE_FORWARD, 0.0, go.EASING_OUTQUAD, 0.12, 0, function()
+                                go.delete(tid)
+                            end)
+                            self.tile_objects[k] = nil
+                        end
+                    end
+
+                    self.is_resolving = true
+                    cascade.apply_matches(self.board, { { cells = res.cells } })
+                    msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+                    timer.delay(0.14, false, function()
+                        resolve_cascade_wave(self, 1)
+                    end)
+                    return true
+                end
+            else
+                booster_controller.cancel_selection(self.boosters)
+                msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+                return true
+            end
+        end
+        return true
+    end
+
     if action.pressed then
         input_controller.on_touch_down(self.input, action.x, action.y, self.width, self.height)
         return true
@@ -486,6 +545,11 @@ function on_message(self, message_id, message, sender)
         self.is_paused = false
         if message.moves then
             msg.post("#hud", "update_moves", { moves = message.moves })
+        end
+    elseif message_id == hash("toggle_booster") then
+        if not self.is_resolving and not self.is_paused and self.boosters then
+            booster_controller.select_booster(self.boosters, message.booster)
+            msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
         end
     end
 end

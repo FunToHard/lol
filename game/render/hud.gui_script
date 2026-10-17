@@ -55,6 +55,23 @@ local function refresh_view(self)
 
     -- Update pause modal state
     set_pause_modal_visible(self, view.is_paused)
+
+    -- Update tactical booster tray
+    if self.boosters_data then
+        local b = self.boosters_data.boosters
+        gui.set_text(self.booster_hammer_count, tostring(b.hammer.quantity))
+        gui.set_text(self.booster_rocket_count, tostring(b.rocket.quantity))
+        gui.set_text(self.booster_bomb_count, tostring(b.bomb.quantity))
+
+        -- Highlight selected booster
+        gui.set_color(self.booster_hammer_btn, b.hammer.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.hammer.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+        gui.set_color(self.booster_rocket_btn, b.rocket.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.rocket.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+        gui.set_color(self.booster_bomb_btn, b.bomb.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.bomb.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+
+        local is_targeting = self.boosters_data.is_targeting == true
+        gui.set_enabled(self.targeting_banner, is_targeting)
+        gui.set_enabled(self.targeting_txt, is_targeting)
+    end
 end
 
 --- Initializes GUI nodes, input listener, and default HUD controller state.
@@ -91,7 +108,18 @@ function init(self)
     self.btn_quit = gui.get_node("btn_quit")
     self.label_quit = gui.get_node("label_quit")
 
+    -- Booster tray references
+    self.booster_hammer_btn = gui.get_node("booster_hammer_btn")
+    self.booster_hammer_count = gui.get_node("booster_hammer_count")
+    self.booster_rocket_btn = gui.get_node("booster_rocket_btn")
+    self.booster_rocket_count = gui.get_node("booster_rocket_count")
+    self.booster_bomb_btn = gui.get_node("booster_bomb_btn")
+    self.booster_bomb_count = gui.get_node("booster_bomb_count")
+    self.targeting_banner = gui.get_node("targeting_banner")
+    self.targeting_txt = gui.get_node("targeting_txt")
+
     self.hud = hud_controller.new()
+    self.boosters_data = nil
     set_pause_modal_visible(self, false)
     refresh_view(self)
 end
@@ -120,6 +148,9 @@ function on_message(self, message_id, message, sender)
         refresh_view(self)
     elseif message_id == hash("toggle_pause") then
         hud_controller.toggle_pause(self.hud, message.is_paused)
+        refresh_view(self)
+    elseif message_id == hash("init_boosters") or message_id == hash("update_boosters") then
+        self.boosters_data = message.boosters
         refresh_view(self)
     end
 end
@@ -155,6 +186,15 @@ function on_input(self, action_id, action)
                 hud_controller.toggle_pause(self.hud, true)
                 refresh_view(self)
                 msg.post("#board", "pause_game")
+                return true
+            elseif gui.pick_node(self.booster_hammer_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "hammer" })
+                return true
+            elseif gui.pick_node(self.booster_rocket_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "rocket" })
+                return true
+            elseif gui.pick_node(self.booster_bomb_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "bomb" })
                 return true
             end
         end
