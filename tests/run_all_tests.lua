@@ -23,7 +23,10 @@ local test_suites = {
     "tests/test_level_loader.lua",
     "tests/test_solver.lua",
     "tests/test_batch_1_levels.lua",
-    "tests/test_level_editor.lua"
+    "tests/test_level_editor.lua",
+    "tests/test_economy.lua",
+    "tests/test_persistence.lua",
+    "tests/test_village.lua"
 }
 
 local start_time = os.clock()

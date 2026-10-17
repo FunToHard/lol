@@ -1,0 +1,64 @@
+--- Script component driving the woodland village diorama scene.
+-- Manages prop restoration visual states, task completions, and companion emotes.
+
+local save_manager = require("game.persistence.save_manager")
+local ledger = require("game.economy.ledger")
+local village_state = require("game.restoration.village_state")
+local companion = require("game.restoration.companion")
+
+--- Initializes the village script component, loads persistent save data, and mounts subsystems.
+-- @param self table Script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    self.save_data = save_manager.load()
+    self.ledger = ledger.new({
+        balances = {
+            stars = self.save_data.player.stars,
+            coins = self.save_data.player.coins,
+            boosters = self.save_data.player.inventory
+        },
+        history = self.save_data.ledger_history
+    })
+    self.village = village_state.new(self.save_data.village, self.ledger)
+    self.companion = companion.new("Pip")
+end
+
+--- Updates companion emote timers and scene ambient states per frame.
+-- @param self table Script instance table.
+-- @param dt number Delta time in seconds since previous frame.
+function update(self, dt)
+    companion.update(self.companion, dt)
+end
+
+--- Handles inter-script messages for task completions, re-styling, and scene navigation.
+-- @param self table Script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload.
+-- @param sender url Sender component URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("complete_task") then
+        local op_id = message.op_id or ("op_task_" .. message.task_id .. "_" .. tostring(os.time()))
+        local ok, err = village_state.complete_task(self.village, message.task_id, message.style_idx, op_id)
+        if ok then
+            companion.trigger_reaction(self.companion, "celebrate", 4.0)
+            -- Sync back to save data table
+            self.save_data.player.stars = ledger.get_balance(self.ledger, "stars")
+            self.save_data.village.completed_tasks = self.village.completed_tasks
+            self.save_data.village.chosen_styles = self.village.chosen_styles
+            self.save_data.ledger_history = self.ledger.history
+            save_manager.save(self.save_data)
+        end
+    elseif message_id == hash("restyle_prop") then
+        local ok = village_state.restyle_prop(self.village, message.task_id, message.style_idx)
+        if ok then
+            self.save_data.village.chosen_styles = self.village.chosen_styles
+            save_manager.save(self.save_data)
+        end
+    end
+end
+
+--- Cleans up input focus upon component finalization.
+-- @param self table Script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

@@ -52,13 +52,13 @@
 ---
 
 ## Phase 4: Persistence, Economy & Village Metagame
-- [ ] Build two-file atomic save system (`save.json.tmp` → integrity check → rename to `save.json` with `.bak` fallback).
-- [ ] Implement versioned schema migration table and test suite.
-- [ ] Build idempotent transaction ledger for Stars, Coins, and Boosters (`op_id`).
-- [ ] Create `village.collection` layered 2.5D diorama (Area 1: Hearthstone Courtyard).
-- [ ] Build Task Journal UI (spend Stars on restoration tasks).
-- [ ] Implement 3-style customization selector (Rustic Cedar, Mossy Stone, Whimsical Crystal) with free re-styling.
-- [ ] Add companion character (*Pip the Owl* / *Bramble the Hedgehog*) emote reactions on task completion.
+- [x] Build two-file atomic save system (`save.json.tmp` → integrity check → rename to `save.json` with `.bak` fallback).
+- [x] Implement versioned schema migration table and test suite.
+- [x] Build idempotent transaction ledger for Stars, Coins, and Boosters (`op_id`).
+- [x] Create `village.collection` layered 2.5D diorama (Area 1: Hearthstone Courtyard).
+- [x] Build Task Journal UI (spend Stars on restoration tasks).
+- [x] Implement 3-style customization selector (Rustic Cedar, Mossy Stone, Whimsical Crystal) with free re-styling.
+- [x] Add companion character (*Pip the Owl* / *Bramble the Hedgehog*) emote reactions on task completion.
 
 ---
 
