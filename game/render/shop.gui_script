@@ -1,0 +1,255 @@
+--- GUI script driving the In-Game Store / Shop GUI modal.
+-- Binds shop_ui_controller view snapshots to visual Defold GUI nodes and handles touch purchases.
+
+local shop_ui_controller = require("game.services.shop_ui_controller")
+local save_manager = require("game.persistence.save_manager")
+local hud_controller = require("game.render.hud_controller")
+
+--- Refreshes all visual GUI nodes based on current shop view snapshot.
+-- @param self table GUI script instance table.
+local function refresh_view(self)
+    if not self.ctrl then return end
+    local view = shop_ui_controller.get_view_data(self.ctrl)
+    local is_open = view.is_open
+
+    -- Modal & Card
+    gui.set_enabled(self.shop_backdrop, is_open)
+    gui.set_enabled(self.shop_card, is_open)
+    gui.set_enabled(self.shop_title, is_open)
+    gui.set_enabled(self.btn_close, is_open)
+    gui.set_enabled(self.lbl_close, is_open)
+
+    -- Balance Bar
+    gui.set_enabled(self.bar_balances, is_open)
+    gui.set_enabled(self.icon_coins, is_open)
+    gui.set_enabled(self.txt_coins, is_open)
+    gui.set_enabled(self.txt_hammer_count, is_open)
+    gui.set_enabled(self.txt_rocket_count, is_open)
+    gui.set_enabled(self.txt_bomb_count, is_open)
+
+    -- Tabs
+    gui.set_enabled(self.tab_boosters, is_open)
+    gui.set_enabled(self.lbl_tab_boosters, is_open)
+    gui.set_enabled(self.tab_packs, is_open)
+    gui.set_enabled(self.lbl_tab_packs, is_open)
+
+    if not is_open then
+        -- Disable all content rows and banner when closed
+        for _, b in ipairs(self.booster_nodes) do
+            gui.set_enabled(b.card, false)
+            gui.set_enabled(b.title, false)
+            gui.set_enabled(b.btn, false)
+            gui.set_enabled(b.lbl, false)
+        end
+        for _, p in ipairs(self.pack_nodes) do
+            gui.set_enabled(p.card, false)
+            gui.set_enabled(p.title, false)
+            gui.set_enabled(p.btn, false)
+            gui.set_enabled(p.lbl, false)
+        end
+        gui.set_enabled(self.toast_banner, false)
+        gui.set_enabled(self.toast_text, false)
+        return
+    end
+
+    -- Update balances
+    gui.set_text(self.txt_coins, hud_controller.format_number(view.coins))
+    gui.set_text(self.txt_hammer_count, "Mallet: " .. tostring(view.hammer))
+    gui.set_text(self.txt_rocket_count, "Rocket: " .. tostring(view.rocket))
+    gui.set_text(self.txt_bomb_count, "Bomb: " .. tostring(view.bomb))
+
+    -- Tab highlights
+    local is_boosters = (view.active_tab == "boosters")
+    gui.set_color(self.tab_boosters, is_boosters and vmath.vector4(0.3, 0.6, 0.4, 1.0) or vmath.vector4(0.2, 0.25, 0.22, 0.8))
+    gui.set_color(self.tab_packs, not is_boosters and vmath.vector4(0.3, 0.6, 0.4, 1.0) or vmath.vector4(0.2, 0.25, 0.22, 0.8))
+
+    -- Boosters Content
+    for i, b in ipairs(self.booster_nodes) do
+        gui.set_enabled(b.card, is_boosters)
+        gui.set_enabled(b.title, is_boosters)
+        gui.set_enabled(b.btn, is_boosters)
+        gui.set_enabled(b.lbl, is_boosters)
+        if is_boosters and view.refill_catalog[i] then
+            local ref = view.refill_catalog[i]
+            gui.set_text(b.title, string.format("%dx %s", ref.count, ref.title))
+            gui.set_text(b.lbl, ref.cost_text .. " Coins")
+            if ref.can_afford then
+                gui.set_color(b.btn, vmath.vector4(0.3, 0.8, 0.4, 1.0))
+            else
+                gui.set_color(b.btn, vmath.vector4(0.5, 0.5, 0.5, 0.6))
+            end
+        end
+    end
+
+    -- IAP Packs Content
+    local is_packs = not is_boosters
+    for i, p in ipairs(self.pack_nodes) do
+        gui.set_enabled(p.card, is_packs)
+        gui.set_enabled(p.title, is_packs)
+        gui.set_enabled(p.btn, is_packs)
+        gui.set_enabled(p.lbl, is_packs)
+        if is_packs and view.iap_catalog[i] then
+            local pack = view.iap_catalog[i]
+            gui.set_text(p.title, pack.title)
+            if pack.is_owned then
+                gui.set_text(p.lbl, "OWNED")
+                gui.set_color(p.btn, vmath.vector4(0.4, 0.4, 0.4, 0.6))
+            else
+                gui.set_text(p.lbl, pack.price_text)
+                gui.set_color(p.btn, vmath.vector4(0.9, 0.7, 0.2, 1.0))
+            end
+        end
+    end
+
+    -- Status toast feedback
+    local has_toast = (view.status_message ~= nil)
+    gui.set_enabled(self.toast_banner, has_toast)
+    gui.set_enabled(self.toast_text, has_toast)
+    if has_toast then
+        gui.set_text(self.toast_text, view.status_message)
+        gui.set_color(self.toast_text, view.status_success and vmath.vector4(0.3, 1.0, 0.4, 1) or vmath.vector4(1.0, 0.3, 0.3, 1))
+    end
+end
+
+--- Initializes GUI nodes, input listener, and default shop controller.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    -- Modal & Card
+    self.shop_backdrop = gui.get_node("shop_backdrop")
+    self.shop_card = gui.get_node("shop_card")
+    self.shop_title = gui.get_node("shop_title")
+    self.btn_close = gui.get_node("btn_close")
+    self.lbl_close = gui.get_node("lbl_close")
+
+    -- Balance Bar
+    self.bar_balances = gui.get_node("bar_balances")
+    self.icon_coins = gui.get_node("icon_coins")
+    self.txt_coins = gui.get_node("txt_coins")
+    self.txt_hammer_count = gui.get_node("txt_hammer_count")
+    self.txt_rocket_count = gui.get_node("txt_rocket_count")
+    self.txt_bomb_count = gui.get_node("txt_bomb_count")
+
+    -- Tabs
+    self.tab_boosters = gui.get_node("tab_boosters")
+    self.lbl_tab_boosters = gui.get_node("lbl_tab_boosters")
+    self.tab_packs = gui.get_node("tab_packs")
+    self.lbl_tab_packs = gui.get_node("lbl_tab_packs")
+
+    -- Boosters
+    self.booster_nodes = {
+        { card = gui.get_node("card_booster_1"), title = gui.get_node("title_booster_1"), btn = gui.get_node("btn_buy_booster_1"), lbl = gui.get_node("lbl_buy_booster_1"), id = "refill_hammer" },
+        { card = gui.get_node("card_booster_2"), title = gui.get_node("title_booster_2"), btn = gui.get_node("btn_buy_booster_2"), lbl = gui.get_node("lbl_buy_booster_2"), id = "refill_rocket" },
+        { card = gui.get_node("card_booster_3"), title = gui.get_node("title_booster_3"), btn = gui.get_node("btn_buy_booster_3"), lbl = gui.get_node("lbl_buy_booster_3"), id = "refill_bomb" }
+    }
+
+    -- Packs
+    self.pack_nodes = {
+        { card = gui.get_node("card_pack_1"), title = gui.get_node("title_pack_1"), btn = gui.get_node("btn_buy_pack_1"), lbl = gui.get_node("lbl_buy_pack_1"), id = "pack_starter" },
+        { card = gui.get_node("card_pack_2"), title = gui.get_node("title_pack_2"), btn = gui.get_node("btn_buy_pack_2"), lbl = gui.get_node("lbl_buy_pack_2"), id = "coins_small" },
+        { card = gui.get_node("card_pack_3"), title = gui.get_node("title_pack_3"), btn = gui.get_node("btn_buy_pack_3"), lbl = gui.get_node("lbl_buy_pack_3"), id = "coins_medium" },
+        { card = gui.get_node("card_pack_4"), title = gui.get_node("title_pack_4"), btn = gui.get_node("btn_buy_pack_4"), lbl = gui.get_node("lbl_buy_pack_4"), id = "coins_large" }
+    }
+
+    -- Toast
+    self.toast_banner = gui.get_node("toast_banner")
+    self.toast_text = gui.get_node("toast_text")
+
+    self.save_data = save_manager.load()
+    self.ctrl = shop_ui_controller.new(self.save_data)
+    refresh_view(self)
+end
+
+--- Handles dispatched messages for opening and closing shop modal.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("show_shop") then
+        self.save_data = save_manager.load()
+        self.ctrl = shop_ui_controller.new(self.save_data)
+        local initial_tab = message and message.tab or "boosters"
+        shop_ui_controller.open(self.ctrl, initial_tab)
+        refresh_view(self)
+    elseif message_id == hash("hide_shop") then
+        if self.ctrl then
+            shop_ui_controller.close(self.ctrl)
+            refresh_view(self)
+        end
+    end
+end
+
+--- Handles touch input across tabs, purchase buttons, and close.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier.
+-- @param action table Action event data {x, y, pressed, released}.
+-- @return boolean consumed True if touch event was processed.
+function on_input(self, action_id, action)
+    if not self.ctrl or not self.ctrl.is_open then
+        return false
+    end
+    if action_id ~= hash("touch") then
+        return false
+    end
+    if not action.pressed then
+        return true
+    end
+
+    -- Close Button
+    if gui.pick_node(self.btn_close, action.x, action.y) then
+        shop_ui_controller.close(self.ctrl)
+        refresh_view(self)
+        pcall(msg.post, "#map_gui", "refresh")
+        return true
+    end
+
+    -- Tabs
+    if gui.pick_node(self.tab_boosters, action.x, action.y) then
+        shop_ui_controller.set_tab(self.ctrl, "boosters")
+        refresh_view(self)
+        return true
+    elseif gui.pick_node(self.tab_packs, action.x, action.y) then
+        shop_ui_controller.set_tab(self.ctrl, "packs")
+        refresh_view(self)
+        return true
+    end
+
+    -- Booster Refills
+    if self.ctrl.active_tab == "boosters" then
+        for _, b in ipairs(self.booster_nodes) do
+            if gui.pick_node(b.btn, action.x, action.y) then
+                local ok = shop_ui_controller.buy_refill(self.ctrl, b.id)
+                refresh_view(self)
+                if ok then
+                    pcall(msg.post, "#map_gui", "refresh")
+                    pcall(msg.post, "#hud", "refresh_boosters")
+                end
+                return true
+            end
+        end
+    elseif self.ctrl.active_tab == "packs" then
+        for _, p in ipairs(self.pack_nodes) do
+            if gui.pick_node(p.btn, action.x, action.y) then
+                shop_ui_controller.buy_iap(self.ctrl, p.id, function(ok)
+                    refresh_view(self)
+                    if ok then
+                        pcall(msg.post, "#map_gui", "refresh")
+                        pcall(msg.post, "#hud", "refresh_boosters")
+                    end
+                end)
+                refresh_view(self)
+                return true
+            end
+        end
+    end
+
+    return true
+end
+
+--- Releases input focus when finalized.
+-- @param self table GUI script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

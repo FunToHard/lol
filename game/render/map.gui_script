@@ -35,7 +35,9 @@ function init(self)
     msg.post(".", "acquire_input_focus")
 
     self.star_text = gui.get_node("star_text")
+    self.coin_icon = gui.get_node("coin_icon")
     self.coin_text = gui.get_node("coin_text")
+    self.btn_shop = gui.get_node("btn_shop")
     self.btn_village = gui.get_node("btn_village")
     self.btn_play_next = gui.get_node("btn_play_next")
     self.btn_settings = gui.get_node("btn_settings")
@@ -81,6 +83,9 @@ function on_input(self, action_id, action)
     if action_id == hash("touch") and action.pressed then
         if gui.pick_node(self.btn_settings, action.x, action.y) then
             pcall(msg.post, "#settings_gui", "show_settings")
+            return true
+        elseif gui.pick_node(self.btn_shop, action.x, action.y) or gui.pick_node(self.coin_icon, action.x, action.y) or gui.pick_node(self.coin_text, action.x, action.y) then
+            pcall(msg.post, "#shop_gui", "show_shop", { tab = "packs" })
             return true
         elseif gui.pick_node(self.btn_village, action.x, action.y) then
             pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "village" })
