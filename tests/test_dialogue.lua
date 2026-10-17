@@ -118,4 +118,28 @@ assert_eq(pip_view.is_last_line, true, "Single line is marked last line")
 dialogue_controller.close(ctrl)
 assert_eq(ctrl.is_active, false, "Manual close verified")
 
+-- 8. Convenience Helper Functions
+local conv_ok = dialogue_controller.start_conversation(ctrl, "pip_cheer")
+assert_eq(conv_ok, true, "start_conversation succeeded")
+assert_eq(ctrl.is_active, true, "Controller active after start_conversation")
+assert_eq(ctrl.current_speaker, "pip", "current_speaker set to pip")
+local cheer_view = dialogue_controller.get_view_data(ctrl)
+assert_eq(cheer_view.avatar_texture, "village_pip", "avatar_texture matches avatar")
+dialogue_controller.close(ctrl)
+
+local idle_ok = dialogue_controller.start_idle_line(ctrl, "bramble", 2)
+assert_eq(idle_ok, true, "start_idle_line succeeded")
+assert_eq(ctrl.is_active, true, "Controller active after start_idle_line")
+assert_eq(ctrl.current_speaker, "bramble", "current_speaker set to bramble")
+dialogue_controller.close(ctrl)
+
+local cust_ok = dialogue_controller.start_custom(ctrl, "bramble", "The mist is lifting!")
+assert_eq(cust_ok, true, "start_custom succeeded")
+assert_eq(ctrl.is_active, true, "Controller active after start_custom")
+local cust_view = dialogue_controller.get_view_data(ctrl)
+assert_eq(cust_view.text, "The mist is lifting!", "Custom text preserved in view")
+assert_eq(cust_view.speaker_name, "Elder Bramble", "Custom speaker is Elder Bramble")
+dialogue_controller.close(ctrl)
+
 print(string.format("All tests passed! (%d/%d assertions)\n", passed_tests, total_tests))
+

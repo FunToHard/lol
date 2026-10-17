@@ -428,7 +428,7 @@ function on_input(self, action_id, action)
     -- 5. Interactive NPC Guide (Elder Bramble)
     if self.npc_bramble and gui.pick_node(self.npc_bramble, action.x, action.y) then
         local completed_count = #(self.village.completed_tasks or {})
-        local hearth_done = village_state.is_task_completed(self.village, "task_hearth")
+        local hearth_done = village_state.is_task_completed(self.village, "repair_stone_hearth")
         if completed_count >= 12 then
             dialogue_controller.start_conversation(self.dialogue, "bramble_courtyard_complete")
         elseif hearth_done and not self.save_data.village.hearth_talk_seen then

@@ -39,6 +39,14 @@ local a3 = area_catalog.get_area("firefly_ridge")
 assert_eq(a3 ~= nil, true, "Area 3 exists")
 assert_eq(a3.name, "Firefly Ridge", "Area 3 name verified")
 
+-- Alias resolution (area_1, area_2, area_3)
+assert_eq(area_catalog.get_area("area_1").id, "hearthstone_courtyard", "area_1 alias resolves")
+assert_eq(area_catalog.get_area("area_2").id, "whispering_willow_pond", "area_2 alias resolves")
+assert_eq(area_catalog.get_area("area_3").id, "firefly_ridge", "area_3 alias resolves")
+assert_eq(area_catalog.is_area_unlocked("area_1", 0, 1), true, "area_1 unlocked via alias")
+assert_eq(area_catalog.is_area_unlocked("area_2", 0, 1), false, "area_2 locked initially via alias")
+assert_eq(area_catalog.is_area_unlocked("area_2", 12, 1), true, "area_2 unlocks at 12 tasks via alias")
+
 -- 2. Area 1 Always Unlocked Initially
 assert_eq(area_catalog.is_area_unlocked("hearthstone_courtyard", 0, 1), true, "Area 1 unlocked initially with 0 tasks")
 

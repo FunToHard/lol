@@ -49,12 +49,19 @@ area_catalog.AREAS = {
     }
 }
 
---- Retrieves an area definition by identifier.
--- @param area_id string Unique area identifier.
+--- Retrieves an area definition by identifier or alias ("area_1", "area_2", "area_3").
+-- @param area_id string Unique area identifier or alias.
 -- @return table|nil area Area descriptor or nil if not found.
 function area_catalog.get_area(area_id)
+    if not area_id then return nil end
+    local alias_map = {
+        area_1 = "hearthstone_courtyard",
+        area_2 = "whispering_willow_pond",
+        area_3 = "firefly_ridge"
+    }
+    local target_id = alias_map[area_id] or area_id
     for _, a in ipairs(area_catalog.AREAS) do
-        if a.id == area_id then
+        if a.id == target_id then
             return a
         end
     end
