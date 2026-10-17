@@ -126,4 +126,43 @@ assert_eq(ctrl.active_booster, "bomb", "Bomb selected")
 booster_controller.cancel_selection(ctrl)
 assert_eq(ctrl.active_booster, nil, "Targeting cancelled")
 
+-- Test 11: Rapid Sequential Booster Use on Same Coordinates (No Idempotency Collision)
+ledger.apply_transaction(econ, "op_grant_2_hammers", "hammer", 2, "test_grant")
+booster_controller.select_booster(ctrl, "hammer")
+local rapid1_ok, rapid1_res = booster_controller.apply_to_cell(ctrl, board, 2, 2)
+assert_true(rapid1_ok, "First rapid hammer succeeded")
+assert_eq(ledger.get_balance(econ, "hammer"), 1, "Balance deducted to 1")
+
+booster_controller.select_booster(ctrl, "hammer")
+local rapid2_ok, rapid2_res = booster_controller.apply_to_cell(ctrl, board, 2, 2)
+assert_true(rapid2_ok, "Second rapid hammer at same coord succeeded without collision")
+assert_eq(ledger.get_balance(econ, "hammer"), 0, "Balance deducted to 0")
+
+-- Test 12: Booster Clearance with Simulated Gravity and Spawner Refill
+local cascade = require("game.board.cascade")
+local prng = require("game.board.prng")
+local rng = prng.new(9999)
+local test_board = grid.create(8, 8)
+cascade.refill_spawners(test_board, rng, { "amber", "emerald", "ruby" })
+
+ledger.apply_transaction(econ, "op_grant_rocket_test", "rocket", 1, "test_grant")
+booster_controller.select_booster(ctrl, "rocket")
+local cl_ok, cl_res = booster_controller.apply_to_cell(ctrl, test_board, 4, 4)
+assert_true(cl_ok, "Rocket cleared row 4")
+
+-- Apply matches, gravity and refill
+cascade.apply_matches(test_board, { { cells = cl_res.cells } })
+local drops = cascade.apply_gravity(test_board)
+assert_true(#drops > 0, "Gravity drops occurred after row cleave")
+local refills = cascade.refill_spawners(test_board, rng, { "amber", "emerald", "ruby" })
+assert_true(#refills > 0, "Top spawners refilled cleared columns")
+
+-- Verify board is completely filled (0 empty holes)
+for gy = 1, test_board.height do
+    for gx = 1, test_board.width do
+        local c = grid.get(test_board, gx, gy)
+        assert_true(c ~= nil and c.tile_type ~= nil, string.format("Cell (%d,%d) refilled and non-empty", gx, gy))
+    end
+end
+
 print(string.format("All tests passed! (%d/%d assertions)", passed_tests, total_tests))

@@ -117,8 +117,9 @@ function booster_controller.apply_to_cell(ctrl, board, gx, gy, op_id)
         end
     end
 
-    -- Deduct 1 item from inventory ledger
-    local tx_id = op_id or string.format("op_booster_%s_%d_%d_%d", b_type, gx, gy, os.time and os.time() or 0)
+    -- Deduct 1 item from inventory ledger with monotonic sequence ID
+    ctrl.tx_seq = (ctrl.tx_seq or 0) + 1
+    local tx_id = op_id or string.format("op_booster_%s_%d_%d_%d_%d", b_type, gx, gy, os.time and os.time() or 0, ctrl.tx_seq)
     local ok_deduct, balance, err = ledger.apply_transaction(ctrl.ledger, tx_id, b_type, -1, "tactical_booster_use")
     if not ok_deduct then
         return false, err or "INVENTORY_DEDUCTION_FAILED"
