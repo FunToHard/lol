@@ -1,0 +1,66 @@
+--- GUI script driving the Level Select Map scene interactions.
+-- Allows selecting levels and navigating between Match-3 puzzle and the Village diorama.
+
+local save_manager = require("game.persistence.save_manager")
+local hud_controller = require("game.render.hud_controller")
+
+--- Refreshes star balance, coin balance, and progression status from saved data.
+-- @param self table GUI script instance table.
+local function refresh_map_data(self)
+    local save_data = save_manager.load()
+    self.stars = save_data.player.stars or 0
+    self.coins = save_data.player.coins or 0
+    self.max_unlocked = save_data.progression.max_unlocked_level or 1
+
+    gui.set_text(self.star_text, tostring(self.stars))
+    gui.set_text(self.coin_text, hud_controller.format_number(self.coins))
+end
+
+--- Initializes the Level Select Map GUI components and input focus.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    self.star_text = gui.get_node("star_text")
+    self.coin_text = gui.get_node("coin_text")
+    self.btn_village = gui.get_node("btn_village")
+    self.btn_play_next = gui.get_node("btn_play_next")
+
+    refresh_map_data(self)
+end
+
+--- Handles dispatched messages for refreshing map state upon re-entry.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("refresh") then
+        refresh_map_data(self)
+    end
+end
+
+--- Handles touch input events for starting levels or navigating to the village scene.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Input action event table.
+-- @return boolean consumed True if touch was consumed.
+function on_input(self, action_id, action)
+    if action_id == hash("touch") and action.pressed then
+        if gui.pick_node(self.btn_village, action.x, action.y) then
+            pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "village" })
+            return true
+        elseif gui.pick_node(self.btn_play_next, action.x, action.y) then
+            local lvl = self.max_unlocked or 1
+            pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "puzzle", level_id = lvl })
+            return true
+        end
+    end
+    return false
+end
+
+--- Releases input focus when the map scene component is disabled or finalized.
+-- @param self table GUI script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

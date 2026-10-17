@@ -1,0 +1,67 @@
+--- Orchestrator script driving Defold collection proxy scene loading, unloading, and transitions.
+-- Coordinates between the Level Select Map, Match-3 Puzzle board, and the 2.5D Village scene.
+
+local scene_switcher = require("game.services.scene_switcher")
+
+--- Initializes the flow controller and automatically mounts the initial scene.
+-- @param self table Script instance table.
+function init(self)
+    self.switcher = scene_switcher.new(scene_switcher.SCENES.MAP)
+    self.proxies = {
+        map = "#proxy_map",
+        puzzle = "#proxy_puzzle",
+        village = "#proxy_village"
+    }
+
+    self.active_proxy = self.proxies[self.switcher.current_scene]
+    self.is_bootstrapping = true
+    msg.post(self.active_proxy, "load")
+end
+
+--- Handles scene transition messages, proxy lifecycle events, and fade callbacks.
+-- @param self table Script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("switch_to") then
+        local target = message.scene
+        local ok, err = scene_switcher.request_switch(self.switcher, target, message)
+        if ok then
+            msg.post("#transition", "fade_out", { duration = self.switcher.fade_duration })
+        end
+    elseif message_id == hash("fade_out_done") then
+        scene_switcher.on_fade_out_complete(self.switcher)
+        if self.active_proxy then
+            msg.post(self.active_proxy, "disable")
+            msg.post(self.active_proxy, "final")
+            msg.post(self.active_proxy, "unload")
+        else
+            -- If no active proxy, load target directly
+            self.active_proxy = self.proxies[self.switcher.target_scene]
+            msg.post(self.active_proxy, "load")
+        end
+    elseif message_id == hash("proxy_unloaded") then
+        self.active_proxy = self.proxies[self.switcher.target_scene]
+        msg.post(self.active_proxy, "load")
+    elseif message_id == hash("proxy_loaded") then
+        msg.post(sender, "init")
+        msg.post(sender, "enable")
+        scene_switcher.on_scene_loaded(self.switcher)
+
+        -- If bootstrapping, fade in or complete instantly
+        if self.is_bootstrapping then
+            self.is_bootstrapping = false
+            scene_switcher.on_fade_in_complete(self.switcher)
+        else
+            msg.post("#transition", "fade_in", { duration = self.switcher.fade_duration })
+        end
+    elseif message_id == hash("fade_in_done") then
+        scene_switcher.on_fade_in_complete(self.switcher)
+    elseif message_id == hash("go_back") then
+        local ok = scene_switcher.go_back(self.switcher)
+        if ok then
+            msg.post("#transition", "fade_out", { duration = self.switcher.fade_duration })
+        end
+    end
+end

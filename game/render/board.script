@@ -424,7 +424,17 @@ function on_message(self, message_id, message, sender)
         restart_level(self)
     elseif message_id == hash("quit_to_map") then
         self.is_paused = false
-        pcall(msg.post, "main:/main#flow", "switch_scene", { scene = "map" })
+        pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+    elseif message_id == hash("load_level") then
+        local lvl_id = message.level_id or 1
+        local file_path = string.format("assets/levels/level_%03d.json", lvl_id)
+        local ok, def = pcall(level_loader.load_from_file, file_path)
+        if ok and def then
+            self.level_def = def
+            self.width = def.grid.width or 8
+            self.height = def.grid.height or 8
+            restart_level(self)
+        end
     end
 end
 

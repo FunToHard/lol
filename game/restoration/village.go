@@ -16,7 +16,7 @@ components {
 embedded_components {
   id: "background"
   type: "sprite"
-  data: "default_animation: \"cell_bg\"\n"
+  data: "default_animation: \"cell_slot\"\n"
   "material: \"/builtins/materials/sprite.material\"\n"
   "blend_mode: BLEND_MODE_ALPHA\n"
   "textures {\n"
