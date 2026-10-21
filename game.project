@@ -8,9 +8,18 @@ shared_state = 1
 width = 720
 height = 1280
 high_dpi = 1
+update_frequency = 60
+vsync = 1
+dynamic_orientation = 0
 
 [android]
 input_method = HiddenInputField
+package = com.funtoward.lanterngrove
+version_code = 1
+minimum_sdk_version = 21
+target_sdk_version = 34
+immersive_mode = 1
+display_cutout = 1
 
 [physics]
 gravity_y = -1000.0
@@ -19,7 +28,16 @@ scale = 0.01
 [html5]
 scale_mode = stretch
 
+[input]
+game_binding = /input/game.input_bindingc
+
 [project]
 title = Lantern Grove
+version = 1.0.0
 custom_resources = assets/levels
 
+[sprite]
+max_count = 1024
+
+[collection]
+max_instances = 1024

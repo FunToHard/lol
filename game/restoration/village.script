@@ -1,0 +1,97 @@
+--- Script component driving the woodland village diorama scene.
+-- Manages prop restoration visual states, task completions, and companion emotes.
+
+local save_manager = require("game.persistence.save_manager")
+local ledger = require("game.economy.ledger")
+local village_state = require("game.restoration.village_state")
+local companion = require("game.restoration.companion")
+local prop_layer_controller = require("game.restoration.prop_layer_controller")
+
+--- Refreshes the 2.5D visual diorama state and informs the village UI of companion emotes.
+-- @param self table Script instance table.
+local function refresh_props(self)
+    self.diorama = prop_layer_controller.get_diorama_snapshot(
+        self.save_data.village and self.save_data.village.completed_tasks or {},
+        self.save_data.village and self.save_data.village.chosen_styles or {},
+        self.companion
+    )
+    pcall(msg.post, "#village_ui", "update_companion", {
+        dialogue = self.diorama.companion.dialogue,
+        state = self.diorama.companion.state,
+        percent = self.diorama.completion_percent
+    })
+end
+
+--- Initializes the village script component, loads persistent save data, and mounts subsystems.
+-- @param self table Script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    self.save_data = save_manager.load()
+    self.ledger = ledger.new({
+        balances = {
+            stars = self.save_data.player.stars,
+            coins = self.save_data.player.coins,
+            boosters = self.save_data.player.inventory
+        },
+        history = self.save_data.ledger_history
+    })
+    self.village = village_state.new(self.save_data.village, self.ledger)
+    self.companion = companion.new("Pip")
+    refresh_props(self)
+end
+
+--- Updates companion emote timers and scene ambient states per frame.
+-- @param self table Script instance table.
+-- @param dt number Delta time in seconds since previous frame.
+function update(self, dt)
+    companion.update(self.companion, dt)
+end
+
+--- Handles inter-script messages for task completions, re-styling, and scene navigation.
+-- @param self table Script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload.
+-- @param sender url Sender component URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("complete_task") then
+        local op_id = message.op_id or ("op_task_" .. message.task_id .. "_" .. tostring(os.time()))
+        local ok, err = village_state.complete_task(self.village, message.task_id, message.style_idx, op_id)
+        if ok then
+            companion.trigger_reaction(self.companion, "celebrate", 4.0)
+            -- Sync back to save data table
+            self.save_data.player.stars = ledger.get_balance(self.ledger, "stars")
+            self.save_data.village.completed_tasks = self.village.completed_tasks
+            self.save_data.village.chosen_styles = self.village.chosen_styles
+            self.save_data.ledger_history = self.ledger.history
+            save_manager.save(self.save_data)
+            refresh_props(self)
+        end
+    elseif message_id == hash("restyle_prop") then
+        local ok = village_state.restyle_prop(self.village, message.task_id, message.style_idx)
+        if ok then
+            self.save_data.village.chosen_styles = self.village.chosen_styles
+            save_manager.save(self.save_data)
+            refresh_props(self)
+        end
+    elseif message_id == hash("switch_to_map") then
+        pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+    elseif message_id == hash("refresh_props") then
+        self.save_data = save_manager.load()
+        refresh_props(self)
+    end
+end
+
+--- Handles user touch input in the village scene to trigger task completions or style switching.
+-- @param self table Script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Input action table containing x, y, pressed, released flags.
+-- @return boolean consumed True if the input was consumed.
+function on_input(self, action_id, action)
+    return false
+end
+
+--- Cleans up input focus upon component finalization.
+-- @param self table Script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end

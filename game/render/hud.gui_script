@@ -1,0 +1,210 @@
+--- GUI script governing the In-Game HUD Overlay and pause modal interactions.
+-- Communicates with board simulation and renders goals, remaining moves, and score.
+
+local hud_controller = require("game.render.hud_controller")
+
+--- Shows or hides all pause modal nodes.
+-- @param self table GUI script instance table.
+-- @param is_visible boolean True to display modal, false to hide.
+local function set_pause_modal_visible(self, is_visible)
+    local v = is_visible == true
+    gui.set_enabled(self.pause_backdrop, v)
+    gui.set_enabled(self.pause_dialog, v)
+    gui.set_enabled(self.pause_title, v)
+    gui.set_enabled(self.btn_resume, v)
+    gui.set_enabled(self.label_resume, v)
+    gui.set_enabled(self.btn_restart, v)
+    gui.set_enabled(self.label_restart, v)
+    gui.set_enabled(self.btn_settings, v)
+    gui.set_enabled(self.label_settings, v)
+    gui.set_enabled(self.btn_quit, v)
+    gui.set_enabled(self.label_quit, v)
+end
+
+--- Refreshes visual GUI nodes using the latest snapshot from hud_controller.
+-- @param self table GUI script instance table.
+local function refresh_view(self)
+    local view = hud_controller.get_view_data(self.hud)
+
+    -- Update moves counter
+    gui.set_text(self.moves_text, view.moves_text)
+
+    -- Update score counter
+    gui.set_text(self.score_text, view.score_text)
+
+    -- Update goal slots (supports up to 3 active goals)
+    for i = 1, 3 do
+        local g = view.goals[i]
+        local icon_node = self.goal_icons[i]
+        local count_node = self.goal_counts[i]
+
+        if g then
+            gui.set_enabled(icon_node, true)
+            gui.set_enabled(count_node, true)
+            gui.play_flipbook(icon_node, g.sprite_name)
+            gui.set_text(count_node, g.count_text)
+
+            if g.is_completed then
+                gui.set_color(count_node, vmath.vector4(0.3, 0.9, 0.3, 1.0))
+            else
+                gui.set_color(count_node, vmath.vector4(1.0, 1.0, 1.0, 1.0))
+            end
+        else
+            gui.set_enabled(icon_node, false)
+            gui.set_enabled(count_node, false)
+        end
+    end
+
+    -- Update pause modal state
+    set_pause_modal_visible(self, view.is_paused)
+
+    -- Update tactical booster tray
+    if self.boosters_data then
+        local b = self.boosters_data.boosters
+        gui.set_text(self.booster_hammer_count, tostring(b.hammer.quantity))
+        gui.set_text(self.booster_rocket_count, tostring(b.rocket.quantity))
+        gui.set_text(self.booster_bomb_count, tostring(b.bomb.quantity))
+
+        -- Highlight selected booster
+        gui.set_color(self.booster_hammer_btn, b.hammer.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.hammer.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+        gui.set_color(self.booster_rocket_btn, b.rocket.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.rocket.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+        gui.set_color(self.booster_bomb_btn, b.bomb.is_selected and vmath.vector4(1, 0.9, 0.4, 1) or (b.bomb.can_select and vmath.vector4(1, 1, 1, 1) or vmath.vector4(0.5, 0.5, 0.5, 0.5)))
+
+        local is_targeting = self.boosters_data.is_targeting == true
+        gui.set_enabled(self.targeting_banner, is_targeting)
+        gui.set_enabled(self.targeting_txt, is_targeting)
+    end
+end
+
+--- Initializes GUI nodes, input listener, and default HUD controller state.
+-- @param self table GUI script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+
+    -- Node references
+    self.moves_text = gui.get_node("moves_text")
+    self.moves_capsule = gui.get_node("moves_capsule")
+    self.score_text = gui.get_node("score_text")
+    self.btn_pause = gui.get_node("btn_pause")
+
+    self.goal_icons = {
+        gui.get_node("goal_icon_1"),
+        gui.get_node("goal_icon_2"),
+        gui.get_node("goal_icon_3")
+    }
+
+    self.goal_counts = {
+        gui.get_node("goal_count_1"),
+        gui.get_node("goal_count_2"),
+        gui.get_node("goal_count_3")
+    }
+
+    -- Pause modal references
+    self.pause_backdrop = gui.get_node("pause_backdrop")
+    self.pause_dialog = gui.get_node("pause_dialog")
+    self.pause_title = gui.get_node("pause_title")
+    self.btn_resume = gui.get_node("btn_resume")
+    self.label_resume = gui.get_node("label_resume")
+    self.btn_restart = gui.get_node("btn_restart")
+    self.label_restart = gui.get_node("label_restart")
+    self.btn_settings = gui.get_node("btn_settings")
+    self.label_settings = gui.get_node("label_settings")
+    self.btn_quit = gui.get_node("btn_quit")
+    self.label_quit = gui.get_node("label_quit")
+
+    -- Booster tray references
+    self.booster_hammer_btn = gui.get_node("booster_hammer_btn")
+    self.booster_hammer_count = gui.get_node("booster_hammer_count")
+    self.booster_rocket_btn = gui.get_node("booster_rocket_btn")
+    self.booster_rocket_count = gui.get_node("booster_rocket_count")
+    self.booster_bomb_btn = gui.get_node("booster_bomb_btn")
+    self.booster_bomb_count = gui.get_node("booster_bomb_count")
+    self.targeting_banner = gui.get_node("targeting_banner")
+    self.targeting_txt = gui.get_node("targeting_txt")
+
+    self.hud = hud_controller.new()
+    self.boosters_data = nil
+    set_pause_modal_visible(self, false)
+    refresh_view(self)
+end
+
+--- Handles dispatched messages for updating moves, score, goals, and pause.
+-- @param self table GUI script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("init_hud") then
+        self.hud = hud_controller.new(message.level_def)
+        refresh_view(self)
+    elseif message_id == hash("update_moves") then
+        hud_controller.set_moves(self.hud, message.moves)
+        refresh_view(self)
+        -- Small pulse on move counter
+        gui.animate(self.moves_capsule, gui.PROP_SCALE, vmath.vector3(1.1, 1.1, 1.0), gui.EASING_OUTQUAD, 0.08, 0, function()
+            gui.animate(self.moves_capsule, gui.PROP_SCALE, vmath.vector3(1.0, 1.0, 1.0), gui.EASING_INQUAD, 0.08)
+        end)
+    elseif message_id == hash("add_score") then
+        hud_controller.add_score(self.hud, message.points)
+        refresh_view(self)
+    elseif message_id == hash("update_goals") then
+        hud_controller.update_goals(self.hud, message.tracker_goals)
+        refresh_view(self)
+    elseif message_id == hash("toggle_pause") then
+        hud_controller.toggle_pause(self.hud, message.is_paused)
+        refresh_view(self)
+    elseif message_id == hash("init_boosters") or message_id == hash("update_boosters") then
+        self.boosters_data = message.boosters
+        refresh_view(self)
+    end
+end
+
+--- Handles touch input on HUD buttons and pause modal actions.
+-- @param self table GUI script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Action event data {x, y, pressed, released}.
+-- @return boolean consumed True if touch event was processed and consumed.
+function on_input(self, action_id, action)
+    if action_id == hash("touch") and action.pressed then
+        if self.hud.is_paused then
+            if gui.pick_node(self.btn_resume, action.x, action.y) then
+                hud_controller.toggle_pause(self.hud, false)
+                refresh_view(self)
+                msg.post("#board", "resume_game")
+                return true
+            elseif gui.pick_node(self.btn_restart, action.x, action.y) then
+                hud_controller.toggle_pause(self.hud, false)
+                refresh_view(self)
+                msg.post("#board", "restart_level")
+                return true
+            elseif gui.pick_node(self.btn_settings, action.x, action.y) then
+                pcall(msg.post, "#settings_gui", "show_settings")
+                return true
+            elseif gui.pick_node(self.btn_quit, action.x, action.y) then
+                hud_controller.toggle_pause(self.hud, false)
+                refresh_view(self)
+                msg.post("#board", "quit_to_map")
+                return true
+            end
+            -- Consume any click on modal backdrop so board doesn't receive input
+            return true
+        else
+            if gui.pick_node(self.btn_pause, action.x, action.y) then
+                hud_controller.toggle_pause(self.hud, true)
+                refresh_view(self)
+                msg.post("#board", "pause_game")
+                return true
+            elseif gui.pick_node(self.booster_hammer_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "hammer" })
+                return true
+            elseif gui.pick_node(self.booster_rocket_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "rocket" })
+                return true
+            elseif gui.pick_node(self.booster_bomb_btn, action.x, action.y) then
+                msg.post("#board", "toggle_booster", { booster = "bomb" })
+                return true
+            end
+        end
+    end
+    return false
+end

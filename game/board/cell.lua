@@ -58,7 +58,7 @@ function cell.can_fall_into(c)
     if not c or not c.is_enabled then
         return false
     end
-    if c.obstacle and c.obstacle.is_solid then
+    if c.obstacle ~= nil then
         return false
     end
     return c.tile_type == nil and c.powerup_type == nil and c.state == cell.STATE_IDLE

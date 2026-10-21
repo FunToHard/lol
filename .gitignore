@@ -13,6 +13,13 @@ __pycache__/
 *.apk
 *.aab
 *.tmp
+*.bak
+save.json*
 .defold/
-/assets/
-assets/
+assets/*
+!assets/levels/
+!assets/levels/**
+!assets/atlases/
+!assets/atlases/**
+!assets/sprites/
+!assets/sprites/**

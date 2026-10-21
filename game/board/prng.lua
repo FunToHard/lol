@@ -34,7 +34,7 @@ function prng.random_int(rng, min_val, max_val)
     end
     local range = max_val - min_val + 1
     local val = prng.next(rng)
-    return min_val + (val % range)
+    return min_val + math.floor((val / 2147483648) * range)
 end
 
 --- Randomly selects an element from an array.

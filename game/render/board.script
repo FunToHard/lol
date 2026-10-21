@@ -1,0 +1,613 @@
+--- Main board script driving visual rendering, input events, and simulation synchronisation.
+-- Coordinates board grid game objects, animations, audio cues, and haptics.
+
+local grid = require("game.board.grid")
+local cell_mod = require("game.board.cell")
+local match_finder = require("game.board.match_finder")
+local cascade = require("game.board.cascade")
+local powerups = require("game.board.powerups")
+local reshuffle = require("game.board.reshuffle")
+local prng = require("game.board.prng")
+local board_view = require("game.render.board_view")
+local input_controller = require("game.render.input_controller")
+local camera_shake = require("game.render.camera_shake")
+local audio_manager = require("game.render.audio_manager")
+local haptic = require("game.render.haptic")
+local level_loader = require("game.board.level_loader")
+local level_tracker = require("game.board.level_tracker")
+local effects = require("game.render.effects")
+local save_manager = require("game.persistence.save_manager")
+local ledger = require("game.economy.ledger")
+local level_flow = require("game.services.level_flow")
+local ads_service = require("game.services.ads_service")
+local mock_ads_adapter = require("game.services.mock_ads_adapter")
+local booster_controller = require("game.render.booster_controller")
+
+local ALLOWED_COLORS = { "amber", "amethyst", "emerald", "ruby", "sapphire" }
+
+--- Generates a unique string key for grid coordinate lookup.
+-- @param x number Grid column.
+-- @param y number Grid row.
+-- @return string Unique key "x,y".
+local function cell_key(x, y)
+    return x .. "," .. y
+end
+
+--- Updates the visual sprite of a tile game object based on board cell contents.
+-- @param tile_id hash Defold game object ID of the tile.
+-- @param cell_data table Board cell table containing tile, powerup, and obstacle states.
+local function update_tile_sprite(tile_id, cell_data)
+    if not tile_id or not cell_data then return end
+    local sprite_name = board_view.get_sprite_name(cell_data.tile_type, cell_data.powerup_type, cell_data.obstacle)
+    if sprite_name then
+        sprite.play_flipbook(msg.url(nil, tile_id, "sprite"), sprite_name)
+    end
+end
+
+--- Applies the 80ms squash and stretch impact bounce when a piece lands.
+-- @param tile_id hash Defold game object ID of the landing tile.
+local function apply_squash_and_stretch(tile_id)
+    if not tile_id then return end
+    go.animate(tile_id, "scale.x", go.PLAYBACK_ONCE_FORWARD, 1.15, go.EASING_OUTSINE, 0.04, 0, function()
+        go.animate(tile_id, "scale.x", go.PLAYBACK_ONCE_FORWARD, 1.0, go.EASING_INSINE, 0.04)
+    end)
+    go.animate(tile_id, "scale.y", go.PLAYBACK_ONCE_FORWARD, 0.85, go.EASING_OUTSINE, 0.04, 0, function()
+        go.animate(tile_id, "scale.y", go.PLAYBACK_ONCE_FORWARD, 1.0, go.EASING_INSINE, 0.04)
+    end)
+end
+
+--- Clears active tile objects, resets board grid and level tracker.
+-- @param self table Script instance table.
+local function restart_level(self)
+    for _, tid in pairs(self.tile_objects) do
+        if tid then go.delete(tid) end
+    end
+    self.tile_objects = {}
+
+    if self.level_def then
+        self.board = level_loader.setup_board(self.level_def, self.rng)
+        self.tracker = level_tracker.new(self.level_def)
+    else
+        self.board = grid.create(self.width, self.height)
+        cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+        reshuffle.execute(self.board, self.rng)
+        self.tracker = level_tracker.new({ level_id = 1, moves = 25, goals = {} })
+    end
+
+    msg.post("#hud", "init_hud", { level_def = self.level_def })
+    self.level_completed = false
+    self.is_paused = false
+    if self.ledger and self.ads and self.save_data then
+        self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def and self.level_def.level_id or 1)
+    end
+    if self.boosters then
+        booster_controller.cancel_selection(self.boosters)
+        msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+    end
+
+    for gy = 1, self.height do
+        for gx = 1, self.width do
+            local k = cell_key(gx, gy)
+            local cell_data = grid.get(self.board, gx, gy)
+            if cell_data and (cell_data.tile_type or cell_data.powerup_type) then
+                local px, py = board_view.grid_to_screen(gx, gy, self.width, self.height)
+                local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                    update_tile_sprite(tile_id, cell_data)
+                end
+            end
+        end
+    end
+    self.is_resolving = false
+end
+
+--- Initializes the board script component, input listeners, and simulation grid.
+-- @param self table Script instance table.
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    self.rng = prng.new(os.time and os.time() or 12345)
+    self.input = input_controller.new()
+    self.shake = camera_shake.new()
+    self.tile_objects = {}
+    self.cell_objects = {}
+    self.is_resolving = false
+    self.is_paused = false
+    self.level_completed = false
+
+    -- Initialize persistent save data, economy ledger, and settings preferences
+    self.save_data = save_manager.load()
+    local settings = self.save_data.settings or {}
+    self.audio = audio_manager.new(settings.sfx_enabled == false, false)
+    self.haptic = haptic.new(settings.haptics_enabled ~= false)
+
+    local player = self.save_data.player or {}
+    self.ledger = ledger.new({
+        balances = {
+            coins = player.coins or 100,
+            stars = player.stars or 0,
+            boosters = player.inventory or { hammer = 1, rocket = 1, bomb = 1 }
+        },
+        history = self.save_data.ledger_history or {}
+    })
+    self.ads = ads_service.new(mock_ads_adapter.new(true))
+
+    -- Load Level 1 definition or fallback to standard 8x8 configuration
+    local ok, def = pcall(level_loader.load_from_file, "assets/levels/level_001.json")
+    if ok and def then
+        self.level_def = def
+        self.width = def.grid.width or 8
+        self.height = def.grid.height or 8
+        self.board = level_loader.setup_board(def, self.rng)
+        self.tracker = level_tracker.new(def)
+    else
+        self.width = 8
+        self.height = 8
+        self.level_def = {
+            level_id = 1,
+            moves = 25,
+            goals = {
+                { type = "collect_color", target = "amber", count = 15 },
+                { type = "collect_color", target = "ruby", count = 10 }
+            }
+        }
+        self.board = grid.create(self.width, self.height)
+        cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+        reshuffle.execute(self.board, self.rng)
+        self.tracker = level_tracker.new(self.level_def)
+    end
+
+    self.flow = level_flow.new(self.ledger, self.ads, self.save_data, self.level_def.level_id)
+    self.boosters = booster_controller.new(self.ledger)
+
+    -- Initialize HUD overlay with active level targets and booster inventory
+    msg.post("#hud", "init_hud", { level_def = self.level_def })
+    msg.post("#hud", "init_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+
+    -- Spawn recessed background cells and interactive pieces
+    for gy = 1, self.height do
+        for gx = 1, self.width do
+            local px, py = board_view.grid_to_screen(gx, gy, self.width, self.height)
+            local k = cell_key(gx, gy)
+
+            -- Recessed cell slot
+            local bg_id = factory.create("#cell_factory", vmath.vector3(px, py, -0.1))
+            if bg_id then
+                self.cell_objects[k] = bg_id
+            end
+
+            -- Piece game object
+            local cell_data = grid.get(self.board, gx, gy)
+            if cell_data and (cell_data.tile_type or cell_data.powerup_type) then
+                local tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                    update_tile_sprite(tile_id, cell_data)
+                end
+            end
+        end
+    end
+end
+
+--- Updates per-frame logic including camera shake decay.
+-- @param self table Script instance table.
+-- @param dt number Delta time in seconds since previous frame.
+function update(self, dt)
+    camera_shake.update(self.shake, dt)
+    if self.shake.intensity > 0.01 then
+        go.set_position(vmath.vector3(self.shake.offset_x, self.shake.offset_y, 0))
+    else
+        go.set_position(vmath.vector3(0, 0, 0))
+    end
+end
+
+--- Applies gravity drops, spawner refills, and visual landing squash/stretch animations.
+-- @param self table Script instance table.
+-- @param on_complete function|nil Callback to invoke after animation delay.
+local function apply_gravity_and_refills(self, on_complete)
+    local drops = cascade.apply_gravity(self.board)
+    for _, drop in ipairs(drops) do
+        local old_k = cell_key(drop.from.x, drop.from.y)
+        local new_k = cell_key(drop.to.x, drop.to.y)
+        local tile_id = self.tile_objects[old_k]
+        if tile_id then
+            self.tile_objects[old_k] = nil
+            self.tile_objects[new_k] = tile_id
+            local target_x, target_y = board_view.grid_to_screen(drop.to.x, drop.to.y, self.width, self.height)
+            go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.16, 0, function()
+                apply_squash_and_stretch(tile_id)
+            end)
+        end
+    end
+
+    local refills = cascade.refill_spawners(self.board, self.rng, ALLOWED_COLORS)
+    for _, refill in ipairs(refills) do
+        local rx, ry = refill.pos.x, refill.pos.y
+        local k = cell_key(rx, ry)
+        local target_x, target_y = board_view.grid_to_screen(rx, ry, self.width, self.height)
+        local spawn_y = target_y + 100
+        local tile_id = factory.create("#tile_factory", vmath.vector3(target_x, spawn_y, 0.0))
+        if tile_id then
+            self.tile_objects[k] = tile_id
+            local c = grid.get(self.board, rx, ry)
+            if c then update_tile_sprite(tile_id, c) end
+
+            go.animate(tile_id, "position.y", go.PLAYBACK_ONCE_FORWARD, target_y, go.EASING_INQUAD, 0.18, 0, function()
+                apply_squash_and_stretch(tile_id)
+            end)
+        end
+    end
+
+    if on_complete then
+        timer.delay(0.24, false, on_complete)
+    end
+end
+
+--- Recursively resolves cascade waves, gravity drops, and top spawner refills.
+-- @param self table Script instance table.
+-- @param wave number Current cascade iteration depth (1-indexed).
+local function resolve_cascade_wave(self, wave)
+    local matches = match_finder.find_all_matches(self.board)
+    if #matches == 0 then
+        -- Check for dead-board reshuffle
+        if not reshuffle.has_legal_moves(self.board) then
+            reshuffle.execute(self.board, self.rng)
+            -- Refresh visual sprites after reshuffle
+            for gy = 1, self.height do
+                for gx = 1, self.width do
+                    local k = cell_key(gx, gy)
+                    local tile_id = self.tile_objects[k]
+                    local c = grid.get(self.board, gx, gy)
+                    if tile_id and c then
+                        update_tile_sprite(tile_id, c)
+                    end
+                end
+            end
+        end
+        self.is_resolving = false
+        if self.tracker and not self.level_completed then
+            local status = level_tracker.get_status(self.tracker)
+            if status == "WON" then
+                self.level_completed = true
+                self.is_paused = true
+                msg.post("#level_end", "show_victory", {
+                    level_id = self.level_def and self.level_def.level_id or 1,
+                    tracker = self.tracker,
+                    flow = self.flow
+                })
+            elseif status == "LOST" then
+                self.level_completed = true
+                self.is_paused = true
+                msg.post("#level_end", "show_defeat", {
+                    level_id = self.level_def and self.level_def.level_id or 1,
+                    tracker = self.tracker,
+                    flow = self.flow
+                })
+            end
+        end
+        return
+    end
+
+    -- Play pitched cascade sound and tactile feedback
+    audio_manager.play_cascade(self.audio, wave)
+    haptic.impact(self.haptic)
+
+    -- Record matches in tracker and award score
+    local cleared_colors = {}
+    local total_cleared = 0
+    for _, m in ipairs(matches) do
+        for _, pos in ipairs(m.cells) do
+            local c = grid.get(self.board, pos.x, pos.y)
+            if c and c.tile_type then
+                table.insert(cleared_colors, c.tile_type)
+            end
+            total_cleared = total_cleared + 1
+        end
+    end
+
+    if self.tracker and #cleared_colors > 0 then
+        level_tracker.record_matches(self.tracker, cleared_colors)
+        msg.post("#hud", "update_goals", { tracker_goals = self.tracker.goals })
+    end
+
+    local pts = total_cleared * 10 * wave
+    msg.post("#hud", "add_score", { points = pts })
+
+    -- Animate match burst and clear visual tile objects
+    local spawn_map = {}
+    for _, m in ipairs(matches) do
+        if m.created_powerup and m.spawn_pos then
+            spawn_map[cell_key(m.spawn_pos.x, m.spawn_pos.y)] = m.created_powerup
+        end
+    end
+
+    for _, m in ipairs(matches) do
+        for _, pos in ipairs(m.cells) do
+            local k = cell_key(pos.x, pos.y)
+            local tile_id = self.tile_objects[k]
+            if tile_id and not spawn_map[k] then
+                go.animate(tile_id, "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1.25, 1.25, 1.0), go.EASING_OUTQUAD, 0.15)
+                go.animate(msg.url(nil, tile_id, "sprite"), "tint.w", go.PLAYBACK_ONCE_FORWARD, 0.0, go.EASING_OUTQUAD, 0.15, 0, function()
+                    go.delete(tile_id)
+                end)
+                self.tile_objects[k] = nil
+            end
+        end
+    end
+
+    -- Apply matches in pure simulation
+    local clear_res = cascade.apply_matches(self.board, matches)
+
+    -- Create visual tiles for newly synthesized powerups
+    if clear_res and clear_res.powerups then
+        for _, sp in ipairs(clear_res.powerups) do
+            local k = cell_key(sp.pos.x, sp.pos.y)
+            local tile_id = self.tile_objects[k]
+            local c = grid.get(self.board, sp.pos.x, sp.pos.y)
+            if not tile_id then
+                local px, py = board_view.grid_to_screen(sp.pos.x, sp.pos.y, self.width, self.height)
+                tile_id = factory.create("#tile_factory", vmath.vector3(px, py, 0.0))
+                if tile_id then
+                    self.tile_objects[k] = tile_id
+                end
+            end
+            if tile_id and c then update_tile_sprite(tile_id, c) end
+        end
+    end
+
+    -- Apply gravity drops, spawner refills, and chain next wave
+    apply_gravity_and_refills(self, function()
+        resolve_cascade_wave(self, wave + 1)
+    end)
+end
+
+--- Executes a validated swap between two adjacent grid cells.
+-- @param self table Script instance table.
+-- @param fx number Source cell X.
+-- @param fy number Source cell Y.
+-- @param tx number Target cell X.
+-- @param ty number Target cell Y.
+local function execute_swap(self, fx, fy, tx, ty)
+    local k_from = cell_key(fx, fy)
+    local k_to = cell_key(tx, ty)
+    local tile_from = self.tile_objects[k_from]
+    local tile_to = self.tile_objects[k_to]
+
+    local is_valid, matches, is_powerup = match_finder.is_valid_swap(self.board, fx, fy, tx, ty)
+
+    if not is_valid then
+        -- Play rejection back-and-forth bounce
+        local p_from_x, p_from_y = board_view.grid_to_screen(fx, fy, self.width, self.height)
+        local p_to_x, p_to_y = board_view.grid_to_screen(tx, ty, self.width, self.height)
+        local mid_x = (p_from_x + p_to_x) * 0.5
+        local mid_y = (p_from_y + p_to_y) * 0.5
+
+        if tile_from then
+            go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(mid_x, mid_y, 0), go.EASING_OUTSINE, 0.08, 0, function()
+                go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_from_x, p_from_y, 0), go.EASING_INSINE, 0.08)
+            end)
+        end
+        return
+    end
+
+    self.is_resolving = true
+    haptic.tick(self.haptic)
+
+    -- Deduct move in tracker and notify HUD
+    if self.tracker then
+        local remaining = level_tracker.record_move(self.tracker)
+        msg.post("#hud", "update_moves", { moves = remaining })
+    end
+
+    -- Smooth positional tween
+    local p_from_x, p_from_y = board_view.grid_to_screen(fx, fy, self.width, self.height)
+    local p_to_x, p_to_y = board_view.grid_to_screen(tx, ty, self.width, self.height)
+
+    if tile_from then
+        go.animate(tile_from, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_to_x, p_to_y, 0), go.EASING_OUTQUAD, 0.15)
+    end
+    if tile_to then
+        go.animate(tile_to, "position", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(p_from_x, p_from_y, 0), go.EASING_OUTQUAD, 0.15)
+    end
+
+    -- Swap objects in lookup table
+    self.tile_objects[k_from] = tile_to
+    self.tile_objects[k_to] = tile_from
+
+    -- Swap simulation data
+    grid.swap(self.board, fx, fy, tx, ty)
+
+    -- Check powerup detonation vs standard match resolution
+    timer.delay(0.16, false, function()
+        if is_powerup then
+            local c_from = grid.get(self.board, tx, ty)
+            local c_to = grid.get(self.board, fx, fy)
+            if c_from and c_from.powerup_type and c_to and c_to.powerup_type then
+                -- Combo blast
+                camera_shake.trigger(self.shake, 4.0)
+                haptic.heavy(self.haptic)
+            else
+                camera_shake.trigger(self.shake, 2.0)
+            end
+        end
+        resolve_cascade_wave(self, 1)
+    end)
+end
+
+--- Handles user input events (touch press, drag, and release).
+-- @param self table Script instance table.
+-- @param action_id hash Action identifier (e.g. hash("touch")).
+-- @param action table Input action table containing x, y, pressed, released flags.
+-- @return boolean consumed True if the input was consumed.
+function on_input(self, action_id, action)
+    if action_id ~= hash("touch") then return false end
+    if self.is_paused or self.is_resolving then return true end
+
+    -- Active tactical booster targeting
+    if self.boosters and self.boosters.active_booster then
+        if action.pressed then
+            local gx, gy = board_view.screen_to_grid(action.x, action.y, self.width, self.height)
+            if gx and gy and booster_controller.can_use_on_cell(self.boosters, self.board, gx, gy) then
+                local b_type = self.boosters.active_booster
+                local ok, res = booster_controller.apply_to_cell(self.boosters, self.board, gx, gy)
+                if ok then
+                    self.save_data.player.inventory = self.ledger.balances.boosters
+                    self.save_data.ledger_history = self.ledger.history
+                    save_manager.save(self.save_data)
+
+                    if b_type == "bomb" then
+                        camera_shake.trigger(self.shake, 4.0)
+                        haptic.heavy(self.haptic)
+                    elseif b_type == "rocket" then
+                        camera_shake.trigger(self.shake, 3.0)
+                        haptic.heavy(self.haptic)
+                    else
+                        camera_shake.trigger(self.shake, 2.0)
+                        haptic.impact(self.haptic)
+                    end
+
+                    for _, pos in ipairs(res.cells) do
+                        local k = cell_key(pos.x, pos.y)
+                        local tid = self.tile_objects[k]
+                        if tid then
+                            go.animate(tid, "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1.3, 1.3, 1.0), go.EASING_OUTQUAD, 0.12)
+                            go.animate(msg.url(nil, tid, "sprite"), "tint.w", go.PLAYBACK_ONCE_FORWARD, 0.0, go.EASING_OUTQUAD, 0.12, 0, function()
+                                go.delete(tid)
+                            end)
+                            self.tile_objects[k] = nil
+                        end
+                    end
+
+                    -- Record matches and score for destroyed tiles
+                    local cleared_colors = {}
+                    for _, pos in ipairs(res.cells) do
+                        local c = grid.get(self.board, pos.x, pos.y)
+                        if c and c.tile_type then
+                            table.insert(cleared_colors, c.tile_type)
+                        end
+                    end
+                    if self.tracker and #cleared_colors > 0 then
+                        level_tracker.record_matches(self.tracker, cleared_colors)
+                        msg.post("#hud", "update_goals", { tracker_goals = self.tracker.goals })
+                    end
+                    local pts = #cleared_colors * 10
+                    if pts > 0 then
+                        msg.post("#hud", "add_score", { points = pts })
+                    end
+
+                    self.is_resolving = true
+                    cascade.apply_matches(self.board, { { cells = res.cells } })
+                    msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+                    timer.delay(0.14, false, function()
+                        apply_gravity_and_refills(self, function()
+                            resolve_cascade_wave(self, 1)
+                        end)
+                    end)
+                    return true
+                end
+            else
+                booster_controller.cancel_selection(self.boosters)
+                msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+                return true
+            end
+        end
+        return true
+    end
+
+    if action.pressed then
+        input_controller.on_touch_down(self.input, action.x, action.y, self.width, self.height)
+        return true
+    elseif action.released then
+        local res = input_controller.on_touch_up(self.input)
+        if res and res.action == "tap" then
+            local c = grid.get(self.board, res.gx, res.gy)
+            if c and c.powerup_type then
+                -- Single tap power-up detonation
+                self.is_resolving = true
+                camera_shake.trigger(self.shake, 2.5)
+                haptic.heavy(self.haptic)
+                local blast = powerups.detonate_single(self.board, res.gx, res.gy)
+                local matches = { { cells = blast.cleared_cells } }
+                cascade.apply_matches(self.board, matches)
+                resolve_cascade_wave(self, 1)
+            end
+        end
+        return true
+    else
+        local res = input_controller.on_touch_move(self.input, action.x, action.y, self.width, self.height)
+        if res and res.action == "swap_commit" then
+            execute_swap(self, res.from.x, res.from.y, res.to.x, res.to.y)
+        end
+        return true
+    end
+end
+
+--- Handles messages dispatched to the board script (pause, resume, restart, quit).
+-- @param self table Script instance table.
+-- @param message_id hash Message identifier.
+-- @param message table Message payload table.
+-- @param sender url Dispatcher sender URL.
+function on_message(self, message_id, message, sender)
+    if message_id == hash("pause_game") then
+        self.is_paused = true
+    elseif message_id == hash("resume_game") then
+        self.is_paused = false
+        self.save_data = save_manager.load()
+        if self.flow then
+            self.flow.save_data = self.save_data
+        end
+        local settings = self.save_data.settings or {}
+        if self.audio then
+            audio_manager.set_muted(self.audio, settings.sfx_enabled == false)
+        end
+        if self.haptic then
+            haptic.set_enabled(self.haptic, settings.haptics_enabled ~= false)
+        end
+    elseif message_id == hash("restart_level") then
+        self.is_paused = false
+        restart_level(self)
+    elseif message_id == hash("quit_to_map") then
+        self.is_paused = false
+        pcall(msg.post, "main:/controller#flow", "switch_to", { scene = "map" })
+    elseif message_id == hash("load_level") then
+        local lvl_id = message.level_id or 1
+        local file_path = string.format("assets/levels/level_%03d.json", lvl_id)
+        local ok, def = pcall(level_loader.load_from_file, file_path)
+        if ok and def then
+            self.level_def = def
+            self.width = def.grid.width or 8
+            self.height = def.grid.height or 8
+            restart_level(self)
+        end
+    elseif message_id == hash("resume_after_continuation") then
+        self.level_completed = false
+        self.is_paused = false
+        if message.moves then
+            msg.post("#hud", "update_moves", { moves = message.moves })
+        end
+    elseif message_id == hash("toggle_booster") then
+        if not self.is_resolving and not self.is_paused and self.boosters then
+            local ok = booster_controller.select_booster(self.boosters, message.booster)
+            if not ok and (self.boosters.quantities[message.booster] or 0) <= 0 then
+                pcall(msg.post, "#shop_gui", "show_shop", { tab = "boosters" })
+            else
+                msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+            end
+        end
+    elseif message_id == hash("refresh_boosters") then
+        self.save_data = save_manager.load()
+        if self.flow then
+            self.flow.save_data = self.save_data
+        end
+        if self.boosters then
+            self.boosters.quantities = self.save_data.player.inventory
+            msg.post("#hud", "update_boosters", { boosters = booster_controller.get_view_data(self.boosters) })
+        end
+    end
+end
+
+--- Cleans up input focus upon component finalization.
+-- @param self table Script instance table.
+function final(self)
+    msg.post(".", "release_input_focus")
+end
